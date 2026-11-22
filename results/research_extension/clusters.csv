@@ -1,0 +1,9 @@
+cluster,name,size,top_8_terms,example_file
+0,TypeScript type-checking and JavaScript lint failures,33,ts; type; src; error ts; ts error; lint; pnpm; error,bitbucket-pipelines-vue-tsc-typecheck.log
+1,GitHub Actions workflow configuration errors,10,yml; github workflows; workflows; github; workflow; workflows ci; ci yml; invalid workflow,github-actions-bad-shell.log
+2,Node package installation and lockfile failures,24,npm err; err; npm; lockfile; install; peer; react; dep,bitbucket-pipelines-npm-eresolve.log
+3,"Heterogeneous build, test, security and other failures",98,error; build; failed; test; example; run; fail; exit,appveyor-dotnet-test-xunit.log
+4,Python pip dependency resolution failures,20,txt; requirements; requirements txt; pip; pip install; python; python pip; install requirements,concourse-ci-pip-resolution.log
+5,Python pytest and assertion failures,11,py; pytest; tests; failed tests; assertionerror; python pytest; pytest failed; python,jenkins-pytest-collection-error.log
+6,Rust compilation and test failures,14,test; test result; result failed; result; cargo test; cargo; failed; panicked,cargo-test-panic-failure.log
+7,Browser automation and test timeouts,13,spec; tests; npx; spec ts; test; checkout; playwright; exceeded,browser-playwright-navigation-timeout.log

@@ -1,0 +1,15 @@
+.venv/
+.venv*/
+venv/
+.DS_Store
+.pkg-smoke/
+.patchrail-release-smoke/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+build/
+*.egg-info/
+*.pyc
+.patchrail-demo/

@@ -1,0 +1,14 @@
+{
+  "fixture_n": 223,
+  "real_world_n": 22,
+  "k_selected": 8,
+  "silhouette": 0.132301,
+  "audited_fixture_n": 50,
+  "fixture_cluster_majority_match": 39,
+  "patchrail_correct_broad": 11,
+  "retrieval_correct_broad": 9,
+  "cluster_vote_exists": 21,
+  "llm_backend": "none",
+  "llm_model": null,
+  "llm_status": "not_executed"
+}

@@ -1,0 +1,99 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "patchrail"
+version = "0.7.6"
+description = "Local-first maintainer automation for open-source CI triage"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [{ name = "Pablo Guillén" }]
+keywords = [
+  "ci",
+  "continuous-integration",
+  "github-actions",
+  "devops",
+  "triage",
+  "log-analysis",
+  "failure-analysis",
+  "open-source",
+  "maintenance",
+  "cli",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: System Administrators",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Build Tools",
+  "Topic :: Software Development :: Quality Assurance",
+  "Topic :: Software Development :: Testing",
+  "Topic :: Utilities",
+]
+
+[project.urls]
+Homepage = "https://github.com/patchrail/patchrail"
+Documentation = "https://github.com/patchrail/patchrail/tree/main/docs"
+Changelog = "https://github.com/patchrail/patchrail/blob/main/CHANGELOG.md"
+Issues = "https://github.com/patchrail/patchrail/issues"
+"GitHub Action" = "https://github.com/patchrail/ci-triage-action"
+
+[project.scripts]
+patchrail = "patchrail.cli:main"
+
+[project.optional-dependencies]
+dev = ["build>=1.2", "jsonschema>=4.20", "mypy>=1.10", "pytest>=8", "ruff>=0.5", "twine>=5.1"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/patchrail"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src/patchrail",
+  "/examples",
+  "/actions",
+  "/.agents",
+  "/README.md",
+  "/ADOPTERS.md",
+  "/LICENSE",
+  "/CHANGELOG.md",
+  "/AGENTS.md",
+  "/ETHICS.md",
+  "/SECURITY.md",
+  "/CONTRIBUTING.md",
+  "/CODE_OF_CONDUCT.md",
+  "/GOVERNANCE.md",
+  "/pyproject.toml",
+  "/uv.lock",
+]
+exclude = [
+  "/.pkg-smoke",
+  "/.venv",
+  "/.pytest_cache",
+  "/.ruff_cache",
+  "/scripts",
+  "/dist",
+  "/build",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src/patchrail/ci/classify.py"]
+strict = true
+warn_unused_ignores = true

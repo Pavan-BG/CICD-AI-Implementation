@@ -1,0 +1,274 @@
+[
+  {
+    "cluster": 0,
+    "name": "TypeScript type-checking and JavaScript lint failures",
+    "size": 33,
+    "top_terms": [
+      "ts",
+      "type",
+      "src",
+      "error ts",
+      "ts error",
+      "lint",
+      "pnpm",
+      "error"
+    ],
+    "examples": [
+      "bitbucket-pipelines-vue-tsc-typecheck.log",
+      "harness-ci-tsc-noemit-ts2322.log",
+      "javascript-biome-format.log",
+      "javascript-eslint-a11y.log",
+      "javascript-eslint-config-parser-drift.log"
+    ],
+    "dominant_reference_classes": [
+      [
+        "typescript_typecheck",
+        22
+      ],
+      [
+        "javascript_lint",
+        11
+      ]
+    ]
+  },
+  {
+    "cluster": 1,
+    "name": "GitHub Actions workflow configuration errors",
+    "size": 10,
+    "top_terms": [
+      "yml",
+      "github workflows",
+      "workflows",
+      "github",
+      "workflow",
+      "workflows ci",
+      "ci yml",
+      "invalid workflow"
+    ],
+    "examples": [
+      "github-actions-bad-shell.log",
+      "github-actions-invalid-workflow.log",
+      "github-actions-matrix-expression.log",
+      "github-actions-missing-workflow-ref.log",
+      "github-actions-permission-id-token.log"
+    ],
+    "dominant_reference_classes": [
+      [
+        "github_actions_workflow",
+        10
+      ]
+    ]
+  },
+  {
+    "cluster": 2,
+    "name": "Node package installation and lockfile failures",
+    "size": 24,
+    "top_terms": [
+      "npm err",
+      "err",
+      "npm",
+      "lockfile",
+      "install",
+      "peer",
+      "react",
+      "dep"
+    ],
+    "examples": [
+      "bitbucket-pipelines-npm-eresolve.log",
+      "buildkite-pnpm-frozen-lockfile.log",
+      "github-actions-npm-etimedout-registry.log",
+      "gitlab-ci-network-dns-failure.log",
+      "node-lockfile-drift.log"
+    ],
+    "dominant_reference_classes": [
+      [
+        "node_dependency_install",
+        22
+      ],
+      [
+        "network_transient_failure",
+        2
+      ]
+    ]
+  },
+  {
+    "cluster": 3,
+    "name": "Heterogeneous build, test, security and other failures",
+    "size": 98,
+    "top_terms": [
+      "error",
+      "build",
+      "failed",
+      "test",
+      "example",
+      "run",
+      "fail",
+      "exit"
+    ],
+    "examples": [
+      "appveyor-dotnet-test-xunit.log",
+      "azure-pipelines-dotnet-test.log",
+      "bitbucket-pipelines-composer-platform.log",
+      "buildkite-docker-build.log",
+      "buildkite-oom-killed-137.log"
+    ],
+    "dominant_reference_classes": [
+      [
+        "go_test_failure",
+        13
+      ],
+      [
+        "ruby_bundle_failure",
+        11
+      ],
+      [
+        "java_build_failure",
+        9
+      ],
+      [
+        "security_scan_failure",
+        8
+      ],
+      [
+        "python_dependency_resolution",
+        8
+      ]
+    ]
+  },
+  {
+    "cluster": 4,
+    "name": "Python pip dependency resolution failures",
+    "size": 20,
+    "top_terms": [
+      "txt",
+      "requirements",
+      "requirements txt",
+      "pip",
+      "pip install",
+      "python",
+      "python pip",
+      "install requirements"
+    ],
+    "examples": [
+      "concourse-ci-pip-resolution.log",
+      "dependency-failure.log",
+      "python-hatch-build-dependency.log",
+      "python-pip-conflicting-constraints.log",
+      "python-pip-constraint-marker-drift.log"
+    ],
+    "dominant_reference_classes": [
+      [
+        "python_dependency_resolution",
+        20
+      ]
+    ]
+  },
+  {
+    "cluster": 5,
+    "name": "Python pytest and assertion failures",
+    "size": 11,
+    "top_terms": [
+      "py",
+      "pytest",
+      "tests",
+      "failed tests",
+      "assertionerror",
+      "python pytest",
+      "pytest failed",
+      "python"
+    ],
+    "examples": [
+      "jenkins-pytest-collection-error.log",
+      "python-module-import.log",
+      "python-pytest-env-token-redacted.log",
+      "python-test-assert-json.log",
+      "python-test-failure.log"
+    ],
+    "dominant_reference_classes": [
+      [
+        "python_test_failure",
+        11
+      ]
+    ]
+  },
+  {
+    "cluster": 6,
+    "name": "Rust compilation and test failures",
+    "size": 14,
+    "top_terms": [
+      "test",
+      "test result",
+      "result failed",
+      "result",
+      "cargo test",
+      "cargo",
+      "failed",
+      "panicked"
+    ],
+    "examples": [
+      "cargo-test-panic-failure.log",
+      "cirrus-ci-cargo-test-panic.log",
+      "elixir-mix-exunit-failure.log",
+      "ruby-rake-aborted.log",
+      "rust-compile-error.log"
+    ],
+    "dominant_reference_classes": [
+      [
+        "rust_test_failure",
+        12
+      ],
+      [
+        "elixir_mix_failure",
+        1
+      ],
+      [
+        "ruby_bundle_failure",
+        1
+      ]
+    ]
+  },
+  {
+    "cluster": 7,
+    "name": "Browser automation and test timeouts",
+    "size": 13,
+    "top_terms": [
+      "spec",
+      "tests",
+      "npx",
+      "spec ts",
+      "test",
+      "checkout",
+      "playwright",
+      "exceeded"
+    ],
+    "examples": [
+      "browser-playwright-navigation-timeout.log",
+      "browser-playwright-webserver-timeout.log",
+      "circleci-checkout-lfs-failure.log",
+      "cypress-browser-launch.log",
+      "github-actions-job-timeout.log"
+    ],
+    "dominant_reference_classes": [
+      [
+        "browser_test_failure",
+        8
+      ],
+      [
+        "ci_job_timeout",
+        2
+      ],
+      [
+        "git_checkout_failure",
+        1
+      ],
+      [
+        "database_migration_failure",
+        1
+      ],
+      [
+        "java_build_failure",
+        1
+      ]
+    ]
+  }
+]

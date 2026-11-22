@@ -1,0 +1,838 @@
+[
+  {
+    "file": "pandas-29342614636.log",
+    "reference_category": "unknown",
+    "patchrail_label": "unknown",
+    "patchrail_broad": "unknown",
+    "patchrail_correct": 1,
+    "patchrail_seconds": 1.165121,
+    "tfidf_vote_broad": "infrastructure",
+    "tfidf_vote_correct": 0,
+    "retrieved_cluster_majority": "Heterogeneous build, test, security and other failures",
+    "cluster_majority_votes": 3,
+    "neighbors": [
+      {
+        "file": "github-actions-upload-artifact-500.log",
+        "score": 0.225008,
+        "cluster": 3,
+        "fixture_label": "artifact_or_cache_failure",
+        "example": "Run actions/upload-artifact@v4\nWith the provided path, there will be 1 file uploaded\nArtifact name is valid!\nRoot directory input is valid!\nBeginning upload of artifact content to blob storage\nUploaded bytes 20971520\nCache service responded with 500\nFailed to upload build-output.zip. Error: Artifact upload failed\n##[error]An error occurred while trying to determine the artifact upload location, contact us for more information.\n##[error]Process completed with exit code 1.\n"
+      },
+      {
+        "file": "github-actions-twine-pypi-exists.log",
+        "score": 0.205654,
+        "cluster": 3,
+        "fixture_label": "release_publish_failure",
+        "example": "Run twine upload dist/*\nUploading distributions to https://upload.pypi.org/legacy/\nUploading mypkg-1.4.2-py3-none-any.whl\n100% \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501 18.2/18.2 kB\n\nHTTPError: 400 Bad Request from https://upload.pypi.org/legacy/\nFile already exists. See https://pypi.org/help/#file-name-reuse for more information.\n##[error]Process completed with exit code 1.\n"
+      },
+      {
+        "file": "docs-build-docusaurus-broken-links.log",
+        "score": 0.1914,
+        "cluster": 3,
+        "fixture_label": "docs_build_failure",
+        "example": "Run npm run build\n\n> docs@0.0.0 build\n> docusaurus build\n\n[INFO] [en] Creating an optimized production build...\n[SUCCESS] Compiled successfully in 24.13s\n[INFO] Generating static files for 42 paths.\n[ERROR] Docusaurus found broken links!\n\nPlease check the pages of your site in the list below, and make sure you don't reference any path that does not exist.\n\nExhaustive list of all broken links found:\n- Broken link on source page path = /docs/intro:\n   -> linking to /docs/getting-started/missing-page (resolved as: /docs/getting-started/missing-page)\n- Broken link on source page path = /docs/guide:\n   -> linking to ./configuration\n\nError: Unable to build website for locale en.\n    at Object.build (/home/runner/work/site/node_modules/@docusaurus/core/lib/index.js:210:15)\nError: Process completed with exit code 1.\n"
+      }
+    ],
+    "llm_diagnosis": null,
+    "llm_cluster": null,
+    "verified": null
+  },
+  {
+    "file": "deno-29349357779-excerpt.log",
+    "reference_category": "test",
+    "patchrail_label": "rust_test_failure",
+    "patchrail_broad": "test",
+    "patchrail_correct": 1,
+    "patchrail_seconds": 0.021733,
+    "tfidf_vote_broad": "test",
+    "tfidf_vote_correct": 1,
+    "retrieved_cluster_majority": "Rust compilation and test failures",
+    "cluster_majority_votes": 3,
+    "neighbors": [
+      {
+        "file": "cirrus-ci-cargo-test-panic.log",
+        "score": 0.437844,
+        "cluster": 6,
+        "fixture_label": "rust_test_failure",
+        "example": "$ cargo test --workspace\nrunning 18 tests\ntest scheduler::tests::retries_backoff_capped ... FAILED\n\nfailures:\n\n---- scheduler::tests::retries_backoff_capped stdout ----\nthread 'scheduler::tests::retries_backoff_capped' panicked at crates/scheduler/src/lib.rs:73:9:\nassertion `left == right` failed\n  left: 32\n right: 30\n\nfailures:\n    scheduler::tests::retries_backoff_capped\n\ntest result: FAILED. 17 passed; 1 failed; 0 ignored; 0 measured\nerror: test failed, to rerun pass `-p scheduler --lib`\nCirrus CI task failed with exit code 101\n"
+      },
+      {
+        "file": "cargo-test-panic-failure.log",
+        "score": 0.402889,
+        "cluster": 6,
+        "fixture_label": "rust_test_failure",
+        "example": "Run cargo test\nrunning 12 tests\nthread 'store::tests::rejects_negative_balance' panicked at crates/store/src/lib.rs:58:9:\nassertion failed: `(left == right)`\n  left: `-5`,\n right: `0`\ntest store::tests::rejects_negative_balance ... FAILED\n\ntest result: FAILED. 11 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out\n\nerror: test failed, to rerun pass `-p store --lib`\n"
+      },
+      {
+        "file": "rust-test-failure.log",
+        "score": 0.379265,
+        "cluster": 6,
+        "fixture_label": "rust_test_failure",
+        "example": "Run cargo test\nthread 'parser::tests::keeps_order' panicked at crates/parser/src/lib.rs:44:9:\nassertion failed: left == right\ntest result: FAILED. 24 passed; 1 failed; 0 ignored\n"
+      }
+    ],
+    "llm_diagnosis": null,
+    "llm_cluster": null,
+    "verified": null
+  },
+  {
+    "file": "svelte-29330826741.log",
+    "reference_category": "unknown",
+    "patchrail_label": "unknown",
+    "patchrail_broad": "unknown",
+    "patchrail_correct": 1,
+    "patchrail_seconds": 0.506546,
+    "tfidf_vote_broad": "build",
+    "tfidf_vote_correct": 0,
+    "retrieved_cluster_majority": "Heterogeneous build, test, security and other failures",
+    "cluster_majority_votes": 3,
+    "neighbors": [
+      {
+        "file": "github-actions-sbt-scala-compile.log",
+        "score": 0.206597,
+        "cluster": 3,
+        "fixture_label": "java_build_failure",
+        "example": "##[group]Run sbt inventoryService/test\nsbt inventoryService/test\n##[endgroup]\n[info] welcome to sbt 1.11.7 (Eclipse Adoptium Java 21.0.4)\n[info] loading settings for project inventory-build from plugins.sbt ...\n[info] loading settings for project root from build.sbt ...\n[info] compiling 14 Scala sources to /home/runner/work/inventory-service/target/scala-2.13/classes ...\n[error] /home/runner/work/inventory-service/src/main/scala/inventory/StockLedger.scala:48:32: not found: value reservedUnits\n[error]     val available = onHand - reservedUnits\n[error]                              ^\n[error] one error found\n[error] (inventoryService / Compile / compileIncremental) Compilation failed\n[error] Total time: 34 s, completed Jul 4, 2026, 1:45:30 PM\n##[error]Process completed with exit code 1.\n"
+      },
+      {
+        "file": "cloudbuild-golangci-lint-failure.log",
+        "score": 0.200931,
+        "cluster": 3,
+        "fixture_label": "go_lint",
+        "example": "Step #2 - \"lint\": + golangci-lint run ./...\nStep #2 - \"lint\": internal/pricing/discount.go:58:2: ineffectual assignment to err (ineffassign)\nStep #2 - \"lint\": internal/pricing/discount.go:71:14: S1021: should merge variable declaration with assignment (gosimple)\nStep #2 - \"lint\": 2 issues found\nFinished Step #2 - \"lint\"\nERROR: build step 2 \"golangci/golangci-lint\" failed: exit status 1\n"
+      },
+      {
+        "file": "codefresh-trivy-critical.log",
+        "score": 0.192109,
+        "cluster": 3,
+        "fixture_label": "security_scan_failure",
+        "example": "Step: Scan image\n$ trivy image --exit-code 1 --severity CRITICAL registry.example.com/api-gateway:sha-9f31c02\n\napi-gateway:sha-9f31c02 (alpine 3.18.4)\n=======================================\nTotal: 2 (CRITICAL: 2)\n\n+-------------+------------------+----------+-------------------+---------------+\n|   LIBRARY   | VULNERABILITY ID | SEVERITY | INSTALLED VERSION | FIXED VERSION |\n+-------------+------------------+----------+-------------------+---------------+\n| openssl     | CVE-2024-0727    | CRITICAL | 3.1.4-r0           | 3.1.4-r5      |\n| libcrypto3  | CVE-2024-0727    | CRITICAL | 3.1.4-r0           | 3.1.4-r5      |\n+-------------+------------------+----------+-------------------+---------------+\n\nCodefresh step failed: exit code 1\n"
+      }
+    ],
+    "llm_diagnosis": null,
+    "llm_cluster": null,
+    "verified": null
+  },
+  {
+    "file": "home-assistant-29350290194.log",
+    "reference_category": "test",
+    "patchrail_label": "python_test_failure",
+    "patchrail_broad": "test",
+    "patchrail_correct": 1,
+    "patchrail_seconds": 0.083848,
+    "tfidf_vote_broad": "test",
+    "tfidf_vote_correct": 1,
+    "retrieved_cluster_majority": "Python pytest and assertion failures",
+    "cluster_majority_votes": 3,
+    "neighbors": [
+      {
+        "file": "python-test-fixture-timeout.log",
+        "score": 0.494982,
+        "cluster": 5,
+        "fixture_label": "python_test_failure",
+        "example": "python -m pytest tests/test_worker.py -q\nFAILED tests/test_worker.py::test_retries - AssertionError\nE   assert 2 == 3\n"
+      },
+      {
+        "file": "python-test-snapshot-diff.log",
+        "score": 0.441302,
+        "cluster": 5,
+        "fixture_label": "python_test_failure",
+        "example": "python -m pytest tests/test_snapshot.py -q\nFAILED tests/test_snapshot.py::test_report_snapshot - AssertionError\nE   Snapshot does not match current output\n"
+      },
+      {
+        "file": "python-test-parametrize-regression.log",
+        "score": 0.392548,
+        "cluster": 5,
+        "fixture_label": "python_test_failure",
+        "example": "pytest -q\nFAILED tests/test_parser.py::test_parse_case[windows-path] - AssertionError\nE   assert 'unknown' == 'python_dependency_resolution'\n"
+      }
+    ],
+    "llm_diagnosis": null,
+    "llm_cluster": null,
+    "verified": null
+  },
+  {
+    "file": "prometheus-29348880303.log",
+    "reference_category": "code_quality",
+    "patchrail_label": "go_lint",
+    "patchrail_broad": "code_quality",
+    "patchrail_correct": 1,
+    "patchrail_seconds": 0.053113,
+    "tfidf_vote_broad": "build",
+    "tfidf_vote_correct": 0,
+    "retrieved_cluster_majority": "Heterogeneous build, test, security and other failures",
+    "cluster_majority_votes": 3,
+    "neighbors": [
+      {
+        "file": "github-actions-sbt-scala-compile.log",
+        "score": 0.2595,
+        "cluster": 3,
+        "fixture_label": "java_build_failure",
+        "example": "##[group]Run sbt inventoryService/test\nsbt inventoryService/test\n##[endgroup]\n[info] welcome to sbt 1.11.7 (Eclipse Adoptium Java 21.0.4)\n[info] loading settings for project inventory-build from plugins.sbt ...\n[info] loading settings for project root from build.sbt ...\n[info] compiling 14 Scala sources to /home/runner/work/inventory-service/target/scala-2.13/classes ...\n[error] /home/runner/work/inventory-service/src/main/scala/inventory/StockLedger.scala:48:32: not found: value reservedUnits\n[error]     val available = onHand - reservedUnits\n[error]                              ^\n[error] one error found\n[error] (inventoryService / Compile / compileIncremental) Compilation failed\n[error] Total time: 34 s, completed Jul 4, 2026, 1:45:30 PM\n##[error]Process completed with exit code 1.\n"
+      },
+      {
+        "file": "github-actions-go-test-failure.log",
+        "score": 0.253476,
+        "cluster": 3,
+        "fixture_label": "go_test_failure",
+        "example": "##[group]Run go test ./...\ngo test ./...\n--- FAIL: TestParseConfig (0.00s)\n    config_test.go:31: undefined: config.LoadDefaults\nFAIL\texample.com/module/config\t0.014s\nFAIL\n##[error]Process completed with exit code 1.\n##[endgroup]\n"
+      },
+      {
+        "file": "cloudbuild-golangci-lint-failure.log",
+        "score": 0.216603,
+        "cluster": 3,
+        "fixture_label": "go_lint",
+        "example": "Step #2 - \"lint\": + golangci-lint run ./...\nStep #2 - \"lint\": internal/pricing/discount.go:58:2: ineffectual assignment to err (ineffassign)\nStep #2 - \"lint\": internal/pricing/discount.go:71:14: S1021: should merge variable declaration with assignment (gosimple)\nStep #2 - \"lint\": 2 issues found\nFinished Step #2 - \"lint\"\nERROR: build step 2 \"golangci/golangci-lint\" failed: exit status 1\n"
+      }
+    ],
+    "llm_diagnosis": null,
+    "llm_cluster": null,
+    "verified": null
+  },
+  {
+    "file": "grafana-27635190952.log",
+    "reference_category": "build",
+    "patchrail_label": "go_test_failure",
+    "patchrail_broad": "test",
+    "patchrail_correct": 0,
+    "patchrail_seconds": 0.143464,
+    "tfidf_vote_broad": "test",
+    "tfidf_vote_correct": 0,
+    "retrieved_cluster_majority": "Heterogeneous build, test, security and other failures",
+    "cluster_majority_votes": 3,
+    "neighbors": [
+      {
+        "file": "github-actions-go-test-failure.log",
+        "score": 0.212126,
+        "cluster": 3,
+        "fixture_label": "go_test_failure",
+        "example": "##[group]Run go test ./...\ngo test ./...\n--- FAIL: TestParseConfig (0.00s)\n    config_test.go:31: undefined: config.LoadDefaults\nFAIL\texample.com/module/config\t0.014s\nFAIL\n##[error]Process completed with exit code 1.\n##[endgroup]\n"
+      },
+      {
+        "file": "cloudbuild-golangci-lint-failure.log",
+        "score": 0.175788,
+        "cluster": 3,
+        "fixture_label": "go_lint",
+        "example": "Step #2 - \"lint\": + golangci-lint run ./...\nStep #2 - \"lint\": internal/pricing/discount.go:58:2: ineffectual assignment to err (ineffassign)\nStep #2 - \"lint\": internal/pricing/discount.go:71:14: S1021: should merge variable declaration with assignment (gosimple)\nStep #2 - \"lint\": 2 issues found\nFinished Step #2 - \"lint\"\nERROR: build step 2 \"golangci/golangci-lint\" failed: exit status 1\n"
+      },
+      {
+        "file": "govulncheck-vulnerability.log",
+        "score": 0.166242,
+        "cluster": 3,
+        "fixture_label": "security_scan_failure",
+        "example": "+ govulncheck ./...\nScanning your code and 214 packages across 1 module for known vulnerabilities...\n\nVulnerability #1: GO-2024-2611 (CVE-2024-2611)\n    Denial of service via crafted Accept-Language header in golang.org/x/text\n  More info: https://pkg.go.dev/vuln/GO-2024-2611\n  Module: golang.org/x/text\n    Found in: golang.org/x/text@v0.14.0\n    Fixed in: golang.org/x/text@v0.14.1\n    Example traces found:\n      #1: internal/httpapi/handler.go:41:19: httpapi.Handler.ServeHTTP calls language.Parse\n\nVulnerabilities found: 1\ngovulncheck exited with code 3\n"
+      }
+    ],
+    "llm_diagnosis": null,
+    "llm_cluster": null,
+    "verified": null
+  },
+  {
+    "file": "ruff-29349828924.log",
+    "reference_category": "unknown",
+    "patchrail_label": "unknown",
+    "patchrail_broad": "unknown",
+    "patchrail_correct": 1,
+    "patchrail_seconds": 0.021356,
+    "tfidf_vote_broad": "test",
+    "tfidf_vote_correct": 0,
+    "retrieved_cluster_majority": "Heterogeneous build, test, security and other failures",
+    "cluster_majority_votes": 3,
+    "neighbors": [
+      {
+        "file": "github-actions-go-test-failure.log",
+        "score": 0.42242,
+        "cluster": 3,
+        "fixture_label": "go_test_failure",
+        "example": "##[group]Run go test ./...\ngo test ./...\n--- FAIL: TestParseConfig (0.00s)\n    config_test.go:31: undefined: config.LoadDefaults\nFAIL\texample.com/module/config\t0.014s\nFAIL\n##[error]Process completed with exit code 1.\n##[endgroup]\n"
+      },
+      {
+        "file": "github-actions-sbt-scala-compile.log",
+        "score": 0.231008,
+        "cluster": 3,
+        "fixture_label": "java_build_failure",
+        "example": "##[group]Run sbt inventoryService/test\nsbt inventoryService/test\n##[endgroup]\n[info] welcome to sbt 1.11.7 (Eclipse Adoptium Java 21.0.4)\n[info] loading settings for project inventory-build from plugins.sbt ...\n[info] loading settings for project root from build.sbt ...\n[info] compiling 14 Scala sources to /home/runner/work/inventory-service/target/scala-2.13/classes ...\n[error] /home/runner/work/inventory-service/src/main/scala/inventory/StockLedger.scala:48:32: not found: value reservedUnits\n[error]     val available = onHand - reservedUnits\n[error]                              ^\n[error] one error found\n[error] (inventoryService / Compile / compileIncremental) Compilation failed\n[error] Total time: 34 s, completed Jul 4, 2026, 1:45:30 PM\n##[error]Process completed with exit code 1.\n"
+      },
+      {
+        "file": "go-data-race-test.log",
+        "score": 0.205053,
+        "cluster": 3,
+        "fixture_label": "go_test_failure",
+        "example": "go test ./... -race\nWARNING: DATA RACE\n--- FAIL: TestConcurrentQueue (0.03s)\nFAIL\texample.test/queue\t0.090s\n"
+      }
+    ],
+    "llm_diagnosis": null,
+    "llm_cluster": null,
+    "verified": null
+  },
+  {
+    "file": "pytorch-29361968044-excerpt.log",
+    "reference_category": "configuration",
+    "patchrail_label": "unknown",
+    "patchrail_broad": "unknown",
+    "patchrail_correct": 0,
+    "patchrail_seconds": 0.024955,
+    "tfidf_vote_broad": "code_quality",
+    "tfidf_vote_correct": 0,
+    "retrieved_cluster_majority": "Heterogeneous build, test, security and other failures",
+    "cluster_majority_votes": 2,
+    "neighbors": [
+      {
+        "file": "cloudbuild-golangci-lint-failure.log",
+        "score": 0.350066,
+        "cluster": 3,
+        "fixture_label": "go_lint",
+        "example": "Step #2 - \"lint\": + golangci-lint run ./...\nStep #2 - \"lint\": internal/pricing/discount.go:58:2: ineffectual assignment to err (ineffassign)\nStep #2 - \"lint\": internal/pricing/discount.go:71:14: S1021: should merge variable declaration with assignment (gosimple)\nStep #2 - \"lint\": 2 issues found\nFinished Step #2 - \"lint\"\nERROR: build step 2 \"golangci/golangci-lint\" failed: exit status 1\n"
+      },
+      {
+        "file": "security-gosec-findings.log",
+        "score": 0.212807,
+        "cluster": 3,
+        "fixture_label": "security_scan_failure",
+        "example": "Run gosec ./...\nResults:\n[G401] Use of weak cryptographic primitive\nSeverity: HIGH\nConfidence: HIGH\ngosec found issues in 1 files\nError: Process completed with exit code 1.\n"
+      },
+      {
+        "file": "python-test-parametrize-regression.log",
+        "score": 0.17087,
+        "cluster": 5,
+        "fixture_label": "python_test_failure",
+        "example": "pytest -q\nFAILED tests/test_parser.py::test_parse_case[windows-path] - AssertionError\nE   assert 'unknown' == 'python_dependency_resolution'\n"
+      }
+    ],
+    "llm_diagnosis": null,
+    "llm_cluster": null,
+    "verified": null
+  },
+  {
+    "file": "envoy-29363920524-excerpt.log",
+    "reference_category": "code_quality",
+    "patchrail_label": "code_coverage_threshold",
+    "patchrail_broad": "code_quality",
+    "patchrail_correct": 1,
+    "patchrail_seconds": 0.019635,
+    "tfidf_vote_broad": "code_quality",
+    "tfidf_vote_correct": 1,
+    "retrieved_cluster_majority": "Heterogeneous build, test, security and other failures",
+    "cluster_majority_votes": 2,
+    "neighbors": [
+      {
+        "file": "cloudbuild-golangci-lint-failure.log",
+        "score": 0.224766,
+        "cluster": 3,
+        "fixture_label": "go_lint",
+        "example": "Step #2 - \"lint\": + golangci-lint run ./...\nStep #2 - \"lint\": internal/pricing/discount.go:58:2: ineffectual assignment to err (ineffassign)\nStep #2 - \"lint\": internal/pricing/discount.go:71:14: S1021: should merge variable declaration with assignment (gosimple)\nStep #2 - \"lint\": 2 issues found\nFinished Step #2 - \"lint\"\nERROR: build step 2 \"golangci/golangci-lint\" failed: exit status 1\n"
+      },
+      {
+        "file": "python-test-parametrize-regression.log",
+        "score": 0.191649,
+        "cluster": 5,
+        "fixture_label": "python_test_failure",
+        "example": "pytest -q\nFAILED tests/test_parser.py::test_parse_case[windows-path] - AssertionError\nE   assert 'unknown' == 'python_dependency_resolution'\n"
+      },
+      {
+        "file": "docs-build-docusaurus-broken-links.log",
+        "score": 0.169228,
+        "cluster": 3,
+        "fixture_label": "docs_build_failure",
+        "example": "Run npm run build\n\n> docs@0.0.0 build\n> docusaurus build\n\n[INFO] [en] Creating an optimized production build...\n[SUCCESS] Compiled successfully in 24.13s\n[INFO] Generating static files for 42 paths.\n[ERROR] Docusaurus found broken links!\n\nPlease check the pages of your site in the list below, and make sure you don't reference any path that does not exist.\n\nExhaustive list of all broken links found:\n- Broken link on source page path = /docs/intro:\n   -> linking to /docs/getting-started/missing-page (resolved as: /docs/getting-started/missing-page)\n- Broken link on source page path = /docs/guide:\n   -> linking to ./configuration\n\nError: Unable to build website for locale en.\n    at Object.build (/home/runner/work/site/node_modules/@docusaurus/core/lib/index.js:210:15)\nError: Process completed with exit code 1.\n"
+      }
+    ],
+    "llm_diagnosis": null,
+    "llm_cluster": null,
+    "verified": null
+  },
+  {
+    "file": "containerd-29358848438-excerpt.log",
+    "reference_category": "test",
+    "patchrail_label": "go_test_failure",
+    "patchrail_broad": "test",
+    "patchrail_correct": 1,
+    "patchrail_seconds": 0.020492,
+    "tfidf_vote_broad": "infrastructure",
+    "tfidf_vote_correct": 0,
+    "retrieved_cluster_majority": "Heterogeneous build, test, security and other failures",
+    "cluster_majority_votes": 3,
+    "neighbors": [
+      {
+        "file": "buildkite-oom-killed-137.log",
+        "score": 0.307605,
+        "cluster": 3,
+        "fixture_label": "runner_resource_exhaustion",
+        "example": "$ docker compose run --rm test bundle exec rspec\n\nRunning 640 examples...\n\n+++ :warning: Agent was lost\nThe agent process was killed on the host machine.\n\ndmesg:\nOut of memory: Killed process 5821 (ruby) total-vm:4123456kB, anon-rss:3987654kB\n\nExited with code exit status 137\nbuildkite-agent: agent lost, exit code 137\n"
+      },
+      {
+        "file": "circleci-oom-exit-137.log",
+        "score": 0.256967,
+        "cluster": 3,
+        "fixture_label": "runner_resource_exhaustion",
+        "example": "#!/bin/bash -eo pipefail\nyarn build\n$ yarn build\nyarn run v1.22.19\n$ webpack --mode production\n<--- Last few GCs --->\n\nFATAL ERROR: JavaScript heap out of memory\nOut of memory: Killed process 412 (node) total-vm:5231212kB\n\nExited with code exit status 137\nCircleCI received exit code 137\n"
+      },
+      {
+        "file": "docker-base-image-manifest-not-found.log",
+        "score": 0.233996,
+        "cluster": 3,
+        "fixture_label": "docker_build_failure",
+        "example": "Run docker buildx build --platform linux/amd64 .\n\n#7 [internal] load metadata for ghcr.io/example/base:missing\n#7 ERROR: failed to solve: ghcr.io/example/base:missing: manifest for ghcr.io/example/base:missing not found\nERROR: failed to solve: manifest for ghcr.io/example/base:missing not found\n"
+      }
+    ],
+    "llm_diagnosis": null,
+    "llm_cluster": null,
+    "verified": null
+  },
+  {
+    "file": "react-29335289512-excerpt.log",
+    "reference_category": "code_quality",
+    "patchrail_label": "javascript_lint",
+    "patchrail_broad": "code_quality",
+    "patchrail_correct": 1,
+    "patchrail_seconds": 0.019007,
+    "tfidf_vote_broad": "code_quality",
+    "tfidf_vote_correct": 1,
+    "retrieved_cluster_majority": "TypeScript type-checking and JavaScript lint failures",
+    "cluster_majority_votes": 2,
+    "neighbors": [
+      {
+        "file": "javascript-prettier-generated-client-drift.log",
+        "score": 0.256083,
+        "cluster": 0,
+        "fixture_label": "javascript_lint",
+        "example": "pnpm prettier --check \"src/**/*.{ts,tsx,json}\"\nChecking formatting...\n[warn] src/generated/api-client.ts\n[warn] Code style issues found in the above file. Run prettier --write to fix.\nlint failed because generated client formatting drifted.\nprettier exited with code 1\n"
+      },
+      {
+        "file": "javascript-prettier-format.log",
+        "score": 0.2485,
+        "cluster": 0,
+        "fixture_label": "javascript_lint",
+        "example": "pnpm lint\n[warn] src/Button.tsx\n[warn] Code style issues found in the above file. Forgot to run prettier?\nlint failed\n"
+      },
+      {
+        "file": "cloudbuild-golangci-lint-failure.log",
+        "score": 0.227252,
+        "cluster": 3,
+        "fixture_label": "go_lint",
+        "example": "Step #2 - \"lint\": + golangci-lint run ./...\nStep #2 - \"lint\": internal/pricing/discount.go:58:2: ineffectual assignment to err (ineffassign)\nStep #2 - \"lint\": internal/pricing/discount.go:71:14: S1021: should merge variable declaration with assignment (gosimple)\nStep #2 - \"lint\": 2 issues found\nFinished Step #2 - \"lint\"\nERROR: build step 2 \"golangci/golangci-lint\" failed: exit status 1\n"
+      }
+    ],
+    "llm_diagnosis": null,
+    "llm_cluster": null,
+    "verified": null
+  },
+  {
+    "file": "symfony-29551386048-excerpt.log",
+    "reference_category": "test",
+    "patchrail_label": "unknown",
+    "patchrail_broad": "unknown",
+    "patchrail_correct": 0,
+    "patchrail_seconds": 0.024849,
+    "tfidf_vote_broad": "test",
+    "tfidf_vote_correct": 1,
+    "retrieved_cluster_majority": "Heterogeneous build, test, security and other failures",
+    "cluster_majority_votes": 2,
+    "neighbors": [
+      {
+        "file": "python-test-parametrize-regression.log",
+        "score": 0.285581,
+        "cluster": 5,
+        "fixture_label": "python_test_failure",
+        "example": "pytest -q\nFAILED tests/test_parser.py::test_parse_case[windows-path] - AssertionError\nE   assert 'unknown' == 'python_dependency_resolution'\n"
+      },
+      {
+        "file": "cloudbuild-golangci-lint-failure.log",
+        "score": 0.256806,
+        "cluster": 3,
+        "fixture_label": "go_lint",
+        "example": "Step #2 - \"lint\": + golangci-lint run ./...\nStep #2 - \"lint\": internal/pricing/discount.go:58:2: ineffectual assignment to err (ineffassign)\nStep #2 - \"lint\": internal/pricing/discount.go:71:14: S1021: should merge variable declaration with assignment (gosimple)\nStep #2 - \"lint\": 2 issues found\nFinished Step #2 - \"lint\"\nERROR: build step 2 \"golangci/golangci-lint\" failed: exit status 1\n"
+      },
+      {
+        "file": "php-phpunit-failure.log",
+        "score": 0.203573,
+        "cluster": 3,
+        "fixture_label": "unknown",
+        "example": "Run vendor/bin/phpunit --testsuite unit\nPHPUnit 10.5.0 by The PHPUnit Project.\n\nThere was 1 failure:\n\n1) Tests\\Feature\\WidgetTest::test_widget_status\nFailed asserting that false is true.\n\nFAILURES!\nTests: 42, Assertions: 120, Failures: 1.\n"
+      }
+    ],
+    "llm_diagnosis": null,
+    "llm_cluster": null,
+    "verified": null
+  },
+  {
+    "file": "discourse-29572043439-excerpt.log",
+    "reference_category": "test",
+    "patchrail_label": "unknown",
+    "patchrail_broad": "unknown",
+    "patchrail_correct": 0,
+    "patchrail_seconds": 0.02784,
+    "tfidf_vote_broad": "test",
+    "tfidf_vote_correct": 1,
+    "retrieved_cluster_majority": "Heterogeneous build, test, security and other failures",
+    "cluster_majority_votes": 3,
+    "neighbors": [
+      {
+        "file": "go-assertion-fail.log",
+        "score": 0.220186,
+        "cluster": 3,
+        "fixture_label": "go_test_failure",
+        "example": "go test ./...\n--- FAIL: TestRenderer (0.00s)\n    renderer_test.go:22: expected ok got warn\nFAIL\texample.test/render\t0.012s\n"
+      },
+      {
+        "file": "github-actions-sbt-scala-compile.log",
+        "score": 0.202355,
+        "cluster": 3,
+        "fixture_label": "java_build_failure",
+        "example": "##[group]Run sbt inventoryService/test\nsbt inventoryService/test\n##[endgroup]\n[info] welcome to sbt 1.11.7 (Eclipse Adoptium Java 21.0.4)\n[info] loading settings for project inventory-build from plugins.sbt ...\n[info] loading settings for project root from build.sbt ...\n[info] compiling 14 Scala sources to /home/runner/work/inventory-service/target/scala-2.13/classes ...\n[error] /home/runner/work/inventory-service/src/main/scala/inventory/StockLedger.scala:48:32: not found: value reservedUnits\n[error]     val available = onHand - reservedUnits\n[error]                              ^\n[error] one error found\n[error] (inventoryService / Compile / compileIncremental) Compilation failed\n[error] Total time: 34 s, completed Jul 4, 2026, 1:45:30 PM\n##[error]Process completed with exit code 1.\n"
+      },
+      {
+        "file": "github-actions-flyway-migration-failure.log",
+        "score": 0.183228,
+        "cluster": 3,
+        "fixture_label": "database_migration_failure",
+        "example": "Run flyway migrate\nFlyway Community Edition 10.4.1 by Redgate\nMigrating schema \"public\" to version \"2 - add users\"\nERROR: Migration V2__add_users.sql failed\nSQL State  : 42S01\nMessage    : ERROR: Table users already exists\nProcess completed with exit code 1.\n"
+      }
+    ],
+    "llm_diagnosis": null,
+    "llm_cluster": null,
+    "verified": null
+  },
+  {
+    "file": "mastodon-29561949942-excerpt.log",
+    "reference_category": "test",
+    "patchrail_label": "ruby_bundle_failure",
+    "patchrail_broad": "dependency",
+    "patchrail_correct": 0,
+    "patchrail_seconds": 0.022779,
+    "tfidf_vote_broad": "code_quality",
+    "tfidf_vote_correct": 0,
+    "retrieved_cluster_majority": "Heterogeneous build, test, security and other failures",
+    "cluster_majority_votes": 2,
+    "neighbors": [
+      {
+        "file": "cloudbuild-golangci-lint-failure.log",
+        "score": 0.2685,
+        "cluster": 3,
+        "fixture_label": "go_lint",
+        "example": "Step #2 - \"lint\": + golangci-lint run ./...\nStep #2 - \"lint\": internal/pricing/discount.go:58:2: ineffectual assignment to err (ineffassign)\nStep #2 - \"lint\": internal/pricing/discount.go:71:14: S1021: should merge variable declaration with assignment (gosimple)\nStep #2 - \"lint\": 2 issues found\nFinished Step #2 - \"lint\"\nERROR: build step 2 \"golangci/golangci-lint\" failed: exit status 1\n"
+      },
+      {
+        "file": "python-test-parametrize-regression.log",
+        "score": 0.213337,
+        "cluster": 5,
+        "fixture_label": "python_test_failure",
+        "example": "pytest -q\nFAILED tests/test_parser.py::test_parse_case[windows-path] - AssertionError\nE   assert 'unknown' == 'python_dependency_resolution'\n"
+      },
+      {
+        "file": "ruby-rspec-failure.log",
+        "score": 0.168001,
+        "cluster": 3,
+        "fixture_label": "ruby_bundle_failure",
+        "example": "bundle exec rspec\nFailures:\n  1) WidgetPresenter renders title\n     Failure/Error: expect(rendered).to include(\"Dashboard\")\n       expected \"<h1>Overview</h1>\" to include \"Dashboard\"\nrspec 1 failure\n"
+      }
+    ],
+    "llm_diagnosis": null,
+    "llm_cluster": null,
+    "verified": null
+  },
+  {
+    "file": "phoenix-28866117635-excerpt.log",
+    "reference_category": "test",
+    "patchrail_label": "elixir_mix_failure",
+    "patchrail_broad": "test",
+    "patchrail_correct": 1,
+    "patchrail_seconds": 0.079447,
+    "tfidf_vote_broad": "test",
+    "tfidf_vote_correct": 1,
+    "retrieved_cluster_majority": "no majority",
+    "cluster_majority_votes": 1,
+    "neighbors": [
+      {
+        "file": "elixir-mix-exunit-failure.log",
+        "score": 0.499701,
+        "cluster": 6,
+        "fixture_label": "elixir_mix_failure",
+        "example": "Run mix test\nCompiling 14 files (.ex)\n.....\n\n  1) test totals items sums prices (DemoWeb.CartTest)\n     test/demo_web/cart_test.exs:8\n     Assertion with == failed\n     code:  assert Cart.total(items) == 30\n     left:  25\n     right: 30\n     stacktrace:\n       test/demo_web/cart_test.exs:10: (test)\n\nFinished in 0.4 seconds\n5 tests, 1 failures\n"
+      },
+      {
+        "file": "elixir-mix-compile-error.log",
+        "score": 0.281747,
+        "cluster": 3,
+        "fixture_label": "elixir_mix_failure",
+        "example": "Run mix compile --warnings-as-errors\n==> demo\nCompiling 14 files (.ex)\n\n== Compilation error in file lib/demo/worker.ex ==\n** (CompileError) lib/demo/worker.ex:12: undefined function handle_job/1\n    (elixir 1.17.2) expanding macro: Kernel.def/2\n    lib/demo/worker.ex:12: Demo.Worker (module)\n\ncould not compile dependency :demo, \"mix compile\" failed\nmix format --check-formatted\n** (Mix) mix format --check-formatted failed, 1 file is not formatted\n"
+      },
+      {
+        "file": "python-test-parametrize-regression.log",
+        "score": 0.228977,
+        "cluster": 5,
+        "fixture_label": "python_test_failure",
+        "example": "pytest -q\nFAILED tests/test_parser.py::test_parse_case[windows-path] - AssertionError\nE   assert 'unknown' == 'python_dependency_resolution'\n"
+      }
+    ],
+    "llm_diagnosis": null,
+    "llm_cluster": null,
+    "verified": null
+  },
+  {
+    "file": "signal-android-28969358490-excerpt.log",
+    "reference_category": "test",
+    "patchrail_label": "java_build_failure",
+    "patchrail_broad": "build",
+    "patchrail_correct": 0,
+    "patchrail_seconds": 0.032594,
+    "tfidf_vote_broad": "build",
+    "tfidf_vote_correct": 0,
+    "retrieved_cluster_majority": "Heterogeneous build, test, security and other failures",
+    "cluster_majority_votes": 3,
+    "neighbors": [
+      {
+        "file": "java-gradle-dependency-resolution.log",
+        "score": 0.344635,
+        "cluster": 3,
+        "fixture_label": "java_build_failure",
+        "example": "> Task :compileJava FAILED\n\nFAILURE: Build failed with an exception.\n\n* What went wrong:\nExecution failed for task ':compileJava'.\n> Could not resolve all files for configuration ':compileClasspath'.\n   > Could not find com.example:missing-library:1.0.0.\n\nBUILD FAILED in 12s\n"
+      },
+      {
+        "file": "gitlab-ci-gradle-kotlin-compile.log",
+        "score": 0.255221,
+        "cluster": 3,
+        "fixture_label": "java_build_failure",
+        "example": "Running with gitlab-runner 16.9.1 (5a5c4802)\n  on docker-runner-02 cCdD7788\nsection_start:1700200000:build_script\n$ ./gradlew compileKotlin\n> Task :notification-service:compileKotlin FAILED\n\ne: /builds/example/notification-service/src/main/kotlin/DeliveryWorker.kt: (34, 21): Unresolved reference: markSent\ne: /builds/example/notification-service/src/main/kotlin/DeliveryWorker.kt: (35, 9): Type mismatch: inferred type is String but Int was expected\n\nFAILURE: Build failed with an exception.\n* What went wrong:\nExecution failed for task ':notification-service:compileKotlin'.\nBUILD FAILED in 12s\nsection_end:1700200041:build_script\nERROR: Job failed: exit code 1\n"
+      },
+      {
+        "file": "cloudbuild-golangci-lint-failure.log",
+        "score": 0.234513,
+        "cluster": 3,
+        "fixture_label": "go_lint",
+        "example": "Step #2 - \"lint\": + golangci-lint run ./...\nStep #2 - \"lint\": internal/pricing/discount.go:58:2: ineffectual assignment to err (ineffassign)\nStep #2 - \"lint\": internal/pricing/discount.go:71:14: S1021: should merge variable declaration with assignment (gosimple)\nStep #2 - \"lint\": 2 issues found\nFinished Step #2 - \"lint\"\nERROR: build step 2 \"golangci/golangci-lint\" failed: exit status 1\n"
+      }
+    ],
+    "llm_diagnosis": null,
+    "llm_cluster": null,
+    "verified": null
+  },
+  {
+    "file": "jellyfin-29544616523-excerpt.log",
+    "reference_category": "build",
+    "patchrail_label": "dotnet_build_failure",
+    "patchrail_broad": "build",
+    "patchrail_correct": 1,
+    "patchrail_seconds": 0.075824,
+    "tfidf_vote_broad": "build",
+    "tfidf_vote_correct": 1,
+    "retrieved_cluster_majority": "Heterogeneous build, test, security and other failures",
+    "cluster_majority_votes": 3,
+    "neighbors": [
+      {
+        "file": "dotnet-xunit-assertion.log",
+        "score": 0.340635,
+        "cluster": 3,
+        "fixture_label": "dotnet_build_failure",
+        "example": "Run dotnet test tests/App.Tests/App.Tests.csproj --configuration Release --no-build --logger trx\n  App.Tests -> /workspace/example/tests/App.Tests/bin/Release/net8.0/App.Tests.dll\n  Failed App.Tests.CiClassifierTests.ClassifiesNuGetDowngrade [43 ms]\n  Error Message:\n   Xunit.Sdk.EqualException: Assert.Equal() Failure\nExpected: dotnet_build_failure\nActual:   unknown\n\nFailed!  - Failed:     1, Passed:    84, Skipped:     0, Total:    85, Duration: 2 s - App.Tests.dll (net8.0)\n"
+      },
+      {
+        "file": "appveyor-dotnet-test-xunit.log",
+        "score": 0.247119,
+        "cluster": 3,
+        "fixture_label": "dotnet_build_failure",
+        "example": "> dotnet test .\\src\\Billing.Tests\\Billing.Tests.csproj\nStarting test execution, please wait...\n[xUnit.net 00:00:01.24]     Billing.Tests.InvoiceCalculatorTests.AppliesTaxRate_ForRegion [FAIL]\n[xUnit.net 00:00:01.24]       Assert.Equal() Failure\n[xUnit.net 00:00:01.24]       Expected: 108.50m\n[xUnit.net 00:00:01.24]       Actual:   108.00m\n  Failed Billing.Tests.InvoiceCalculatorTests.AppliesTaxRate_ForRegion [12 ms]\n\nFailed!  - Failed:     1, Passed:    46, Skipped:     0, Total:    47\nCommand exited with code 1\n"
+      },
+      {
+        "file": "azure-pipelines-dotnet-test.log",
+        "score": 0.243527,
+        "cluster": 3,
+        "fixture_label": "dotnet_build_failure",
+        "example": "##[section]Starting: dotnet test\n==============================================================================\nTask         : .NET Core\nDescription  : Build, test, package, or publish a dotnet application\n==============================================================================\n##[command]dotnet test ./tests/Billing.Tests.csproj --logger trx\nStarting test execution, please wait...\n\n  X Billing.Tests.InvoiceCalculatorTests.AppliesDiscountAboveThreshold [12 ms]\n  Error Message:\n   Xunit.Sdk.EqualException\n   Assert.Equal() Failure\n   Expected: 90.00m\n   Actual:   100.00m\n\nFailed!  - Failed:     1, Passed:    47, Skipped:     0, Total:    48\n##[error]Process completed with exit code 1.\n##[section]Finishing: dotnet test\n"
+      }
+    ],
+    "llm_diagnosis": null,
+    "llm_cluster": null,
+    "verified": null
+  },
+  {
+    "file": "cats-29545595453-excerpt.log",
+    "reference_category": "test",
+    "patchrail_label": "java_build_failure",
+    "patchrail_broad": "build",
+    "patchrail_correct": 0,
+    "patchrail_seconds": 0.022124,
+    "tfidf_vote_broad": "build",
+    "tfidf_vote_correct": 0,
+    "retrieved_cluster_majority": "Heterogeneous build, test, security and other failures",
+    "cluster_majority_votes": 2,
+    "neighbors": [
+      {
+        "file": "github-actions-sbt-scala-compile.log",
+        "score": 0.476719,
+        "cluster": 3,
+        "fixture_label": "java_build_failure",
+        "example": "##[group]Run sbt inventoryService/test\nsbt inventoryService/test\n##[endgroup]\n[info] welcome to sbt 1.11.7 (Eclipse Adoptium Java 21.0.4)\n[info] loading settings for project inventory-build from plugins.sbt ...\n[info] loading settings for project root from build.sbt ...\n[info] compiling 14 Scala sources to /home/runner/work/inventory-service/target/scala-2.13/classes ...\n[error] /home/runner/work/inventory-service/src/main/scala/inventory/StockLedger.scala:48:32: not found: value reservedUnits\n[error]     val available = onHand - reservedUnits\n[error]                              ^\n[error] one error found\n[error] (inventoryService / Compile / compileIncremental) Compilation failed\n[error] Total time: 34 s, completed Jul 4, 2026, 1:45:30 PM\n##[error]Process completed with exit code 1.\n"
+      },
+      {
+        "file": "cloudbuild-golangci-lint-failure.log",
+        "score": 0.272526,
+        "cluster": 3,
+        "fixture_label": "go_lint",
+        "example": "Step #2 - \"lint\": + golangci-lint run ./...\nStep #2 - \"lint\": internal/pricing/discount.go:58:2: ineffectual assignment to err (ineffassign)\nStep #2 - \"lint\": internal/pricing/discount.go:71:14: S1021: should merge variable declaration with assignment (gosimple)\nStep #2 - \"lint\": 2 issues found\nFinished Step #2 - \"lint\"\nERROR: build step 2 \"golangci/golangci-lint\" failed: exit status 1\n"
+      },
+      {
+        "file": "python-test-parametrize-regression.log",
+        "score": 0.241291,
+        "cluster": 5,
+        "fixture_label": "python_test_failure",
+        "example": "pytest -q\nFAILED tests/test_parser.py::test_parse_case[windows-path] - AssertionError\nE   assert 'unknown' == 'python_dependency_resolution'\n"
+      }
+    ],
+    "llm_diagnosis": null,
+    "llm_cluster": null,
+    "verified": null
+  },
+  {
+    "file": "riverpod-29573819047-excerpt.log",
+    "reference_category": "code_quality",
+    "patchrail_label": "unknown",
+    "patchrail_broad": "unknown",
+    "patchrail_correct": 0,
+    "patchrail_seconds": 0.036133,
+    "tfidf_vote_broad": "code_quality",
+    "tfidf_vote_correct": 1,
+    "retrieved_cluster_majority": "Heterogeneous build, test, security and other failures",
+    "cluster_majority_votes": 2,
+    "neighbors": [
+      {
+        "file": "cloudbuild-golangci-lint-failure.log",
+        "score": 0.24745,
+        "cluster": 3,
+        "fixture_label": "go_lint",
+        "example": "Step #2 - \"lint\": + golangci-lint run ./...\nStep #2 - \"lint\": internal/pricing/discount.go:58:2: ineffectual assignment to err (ineffassign)\nStep #2 - \"lint\": internal/pricing/discount.go:71:14: S1021: should merge variable declaration with assignment (gosimple)\nStep #2 - \"lint\": 2 issues found\nFinished Step #2 - \"lint\"\nERROR: build step 2 \"golangci/golangci-lint\" failed: exit status 1\n"
+      },
+      {
+        "file": "github-actions-sbt-scala-compile.log",
+        "score": 0.188721,
+        "cluster": 3,
+        "fixture_label": "java_build_failure",
+        "example": "##[group]Run sbt inventoryService/test\nsbt inventoryService/test\n##[endgroup]\n[info] welcome to sbt 1.11.7 (Eclipse Adoptium Java 21.0.4)\n[info] loading settings for project inventory-build from plugins.sbt ...\n[info] loading settings for project root from build.sbt ...\n[info] compiling 14 Scala sources to /home/runner/work/inventory-service/target/scala-2.13/classes ...\n[error] /home/runner/work/inventory-service/src/main/scala/inventory/StockLedger.scala:48:32: not found: value reservedUnits\n[error]     val available = onHand - reservedUnits\n[error]                              ^\n[error] one error found\n[error] (inventoryService / Compile / compileIncremental) Compilation failed\n[error] Total time: 34 s, completed Jul 4, 2026, 1:45:30 PM\n##[error]Process completed with exit code 1.\n"
+      },
+      {
+        "file": "python-test-parametrize-regression.log",
+        "score": 0.171634,
+        "cluster": 5,
+        "fixture_label": "python_test_failure",
+        "example": "pytest -q\nFAILED tests/test_parser.py::test_parse_case[windows-path] - AssertionError\nE   assert 'unknown' == 'python_dependency_resolution'\n"
+      }
+    ],
+    "llm_diagnosis": null,
+    "llm_cluster": null,
+    "verified": null
+  },
+  {
+    "file": "cabal-29562439929-excerpt.log",
+    "reference_category": "test",
+    "patchrail_label": "unknown",
+    "patchrail_broad": "unknown",
+    "patchrail_correct": 0,
+    "patchrail_seconds": 0.056835,
+    "tfidf_vote_broad": "code_quality",
+    "tfidf_vote_correct": 0,
+    "retrieved_cluster_majority": "Heterogeneous build, test, security and other failures",
+    "cluster_majority_votes": 3,
+    "neighbors": [
+      {
+        "file": "cloudbuild-golangci-lint-failure.log",
+        "score": 0.197411,
+        "cluster": 3,
+        "fixture_label": "go_lint",
+        "example": "Step #2 - \"lint\": + golangci-lint run ./...\nStep #2 - \"lint\": internal/pricing/discount.go:58:2: ineffectual assignment to err (ineffassign)\nStep #2 - \"lint\": internal/pricing/discount.go:71:14: S1021: should merge variable declaration with assignment (gosimple)\nStep #2 - \"lint\": 2 issues found\nFinished Step #2 - \"lint\"\nERROR: build step 2 \"golangci/golangci-lint\" failed: exit status 1\n"
+      },
+      {
+        "file": "github-actions-sbt-scala-compile.log",
+        "score": 0.176952,
+        "cluster": 3,
+        "fixture_label": "java_build_failure",
+        "example": "##[group]Run sbt inventoryService/test\nsbt inventoryService/test\n##[endgroup]\n[info] welcome to sbt 1.11.7 (Eclipse Adoptium Java 21.0.4)\n[info] loading settings for project inventory-build from plugins.sbt ...\n[info] loading settings for project root from build.sbt ...\n[info] compiling 14 Scala sources to /home/runner/work/inventory-service/target/scala-2.13/classes ...\n[error] /home/runner/work/inventory-service/src/main/scala/inventory/StockLedger.scala:48:32: not found: value reservedUnits\n[error]     val available = onHand - reservedUnits\n[error]                              ^\n[error] one error found\n[error] (inventoryService / Compile / compileIncremental) Compilation failed\n[error] Total time: 34 s, completed Jul 4, 2026, 1:45:30 PM\n##[error]Process completed with exit code 1.\n"
+      },
+      {
+        "file": "k8s-deploy-admission-webhook.log",
+        "score": 0.170419,
+        "cluster": 3,
+        "fixture_label": "kubernetes_deploy_failure",
+        "example": "Run kustomize build overlays/prod | kubectl apply -f -\nError from server (Forbidden): error when creating \"STDIN\": admission webhook \"validate.gatekeeper.sh\" denied the request: image tag ':latest' is not allowed\n"
+      }
+    ],
+    "llm_diagnosis": null,
+    "llm_cluster": null,
+    "verified": null
+  },
+  {
+    "file": "crystal-29501393259-excerpt.log",
+    "reference_category": "test",
+    "patchrail_label": "unknown",
+    "patchrail_broad": "unknown",
+    "patchrail_correct": 0,
+    "patchrail_seconds": 0.031368,
+    "tfidf_vote_broad": "code_quality",
+    "tfidf_vote_correct": 0,
+    "retrieved_cluster_majority": "Heterogeneous build, test, security and other failures",
+    "cluster_majority_votes": 2,
+    "neighbors": [
+      {
+        "file": "cloudbuild-golangci-lint-failure.log",
+        "score": 0.258814,
+        "cluster": 3,
+        "fixture_label": "go_lint",
+        "example": "Step #2 - \"lint\": + golangci-lint run ./...\nStep #2 - \"lint\": internal/pricing/discount.go:58:2: ineffectual assignment to err (ineffassign)\nStep #2 - \"lint\": internal/pricing/discount.go:71:14: S1021: should merge variable declaration with assignment (gosimple)\nStep #2 - \"lint\": 2 issues found\nFinished Step #2 - \"lint\"\nERROR: build step 2 \"golangci/golangci-lint\" failed: exit status 1\n"
+      },
+      {
+        "file": "gitlab-ci-clang-link-error.log",
+        "score": 0.18884,
+        "cluster": 3,
+        "fixture_label": "cpp_build_failure",
+        "example": "Running with gitlab-runner 17.8.1 (abcdef12)\n  on shared-linux-runner runner-01\n\n$ cmake --build build --config Release\n[ 50%] Linking CXX executable sample-app\n/usr/bin/ld: CMakeFiles/sample-app.dir/src/main.cpp.o: in function `main':\nmain.cpp:(.text+0x14): undefined reference to `bar()'\nclang++: error: linker command failed with exit code 1 (use -v to see invocation)\nmake[2]: *** [CMakeFiles/sample-app.dir/build.make:97: sample-app] Error 1\nmake[1]: *** [CMakeFiles/Makefile2:83: CMakeFiles/sample-app.dir/all] Error 2\nmake: *** [Makefile:91: all] Error 2\nERROR: Job failed: exit code 1\n"
+      },
+      {
+        "file": "python-test-parametrize-regression.log",
+        "score": 0.187975,
+        "cluster": 5,
+        "fixture_label": "python_test_failure",
+        "example": "pytest -q\nFAILED tests/test_parser.py::test_parse_case[windows-path] - AssertionError\nE   assert 'unknown' == 'python_dependency_resolution'\n"
+      }
+    ],
+    "llm_diagnosis": null,
+    "llm_cluster": null,
+    "verified": null
+  },
+  {
+    "file": "dune-29585452292-excerpt.log",
+    "reference_category": "test",
+    "patchrail_label": "unknown",
+    "patchrail_broad": "unknown",
+    "patchrail_correct": 0,
+    "patchrail_seconds": 0.038144,
+    "tfidf_vote_broad": "build",
+    "tfidf_vote_correct": 0,
+    "retrieved_cluster_majority": "Heterogeneous build, test, security and other failures",
+    "cluster_majority_votes": 3,
+    "neighbors": [
+      {
+        "file": "cloudbuild-golangci-lint-failure.log",
+        "score": 0.242072,
+        "cluster": 3,
+        "fixture_label": "go_lint",
+        "example": "Step #2 - \"lint\": + golangci-lint run ./...\nStep #2 - \"lint\": internal/pricing/discount.go:58:2: ineffectual assignment to err (ineffassign)\nStep #2 - \"lint\": internal/pricing/discount.go:71:14: S1021: should merge variable declaration with assignment (gosimple)\nStep #2 - \"lint\": 2 issues found\nFinished Step #2 - \"lint\"\nERROR: build step 2 \"golangci/golangci-lint\" failed: exit status 1\n"
+      },
+      {
+        "file": "java-gradle-toolchain-version.log",
+        "score": 0.210846,
+        "cluster": 3,
+        "fixture_label": "java_build_failure",
+        "example": "Run ./gradlew test\n\nFAILURE: Build failed with an exception.\n\n* What went wrong:\nCould not determine java version from '22.0.1'.\nUnsupported class file major version 66\n\nBUILD FAILED in 8s\n"
+      },
+      {
+        "file": "xcode-swiftpm-resolution-failure.log",
+        "score": 0.20747,
+        "cluster": 3,
+        "fixture_label": "xcode_build_failure",
+        "example": "+ swift build --build-tests\nFetching https://github.com/example/swift-log from cache\nFetching https://github.com/example/swift-metrics from cache\nComputing version for https://github.com/example/swift-log\nComputing version for https://github.com/example/swift-metrics\nerror: Dependencies could not be resolved because root depends on 'swift-metrics' 2.4.0..<3.0.0 and root depends on 'swift-log' 1.6.0..<2.0.0.\n'swift-metrics' >= 2.4.0 practically depends on 'swift-log' 1.4.0..<1.5.0.\nerror: could not find target(s) 'AppNetworking' in package 'app'; valid targets are: 'App', 'AppKit'\n** BUILD FAILED **\nError: Process completed with exit code 1.\n"
+      }
+    ],
+    "llm_diagnosis": null,
+    "llm_cluster": null,
+    "verified": null
+  }
+]

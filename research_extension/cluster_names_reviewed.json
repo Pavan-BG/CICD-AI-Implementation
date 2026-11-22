@@ -1,0 +1,10 @@
+{
+ "0":"TypeScript type-checking and JavaScript lint failures",
+ "1":"GitHub Actions workflow configuration errors",
+ "2":"Node package installation and lockfile failures",
+ "3":"Heterogeneous build, test, security and other failures",
+ "4":"Python pip dependency resolution failures",
+ "5":"Python pytest and assertion failures",
+ "6":"Rust compilation and test failures",
+ "7":"Browser automation and test timeouts"
+}

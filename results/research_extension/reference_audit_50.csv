@@ -1,0 +1,51 @@
+file,fixture_expected,reference_category,cluster,cluster_name,cluster_majority_category,majority_match,majority_support
+bitbucket-pipelines-vue-tsc-typecheck.log,typescript_typecheck,code_quality,0,TypeScript type-checking and JavaScript lint failures,code_quality,1,33
+harness-ci-tsc-noemit-ts2322.log,typescript_typecheck,code_quality,0,TypeScript type-checking and JavaScript lint failures,code_quality,1,33
+javascript-biome-format.log,javascript_lint,code_quality,0,TypeScript type-checking and JavaScript lint failures,code_quality,1,33
+javascript-eslint-a11y.log,javascript_lint,code_quality,0,TypeScript type-checking and JavaScript lint failures,code_quality,1,33
+javascript-eslint-config-parser-drift.log,javascript_lint,code_quality,0,TypeScript type-checking and JavaScript lint failures,code_quality,1,33
+javascript-eslint-import-order.log,javascript_lint,code_quality,0,TypeScript type-checking and JavaScript lint failures,code_quality,1,33
+github-actions-bad-shell.log,github_actions_workflow,configuration,1,GitHub Actions workflow configuration errors,configuration,1,10
+github-actions-invalid-workflow.log,github_actions_workflow,configuration,1,GitHub Actions workflow configuration errors,configuration,1,10
+github-actions-matrix-expression.log,github_actions_workflow,configuration,1,GitHub Actions workflow configuration errors,configuration,1,10
+github-actions-missing-workflow-ref.log,github_actions_workflow,configuration,1,GitHub Actions workflow configuration errors,configuration,1,10
+github-actions-permission-id-token.log,github_actions_workflow,configuration,1,GitHub Actions workflow configuration errors,configuration,1,10
+github-actions-permission.log,github_actions_workflow,configuration,1,GitHub Actions workflow configuration errors,configuration,1,10
+bitbucket-pipelines-npm-eresolve.log,node_dependency_install,dependency,2,Node package installation and lockfile failures,dependency,1,22
+buildkite-pnpm-frozen-lockfile.log,node_dependency_install,dependency,2,Node package installation and lockfile failures,dependency,1,22
+github-actions-npm-etimedout-registry.log,network_transient_failure,infrastructure,2,Node package installation and lockfile failures,dependency,0,22
+gitlab-ci-network-dns-failure.log,network_transient_failure,infrastructure,2,Node package installation and lockfile failures,dependency,0,22
+node-lockfile-drift.log,node_dependency_install,dependency,2,Node package installation and lockfile failures,dependency,1,22
+node-npm-ci-lock-outdated.log,node_dependency_install,dependency,2,Node package installation and lockfile failures,dependency,1,22
+appveyor-dotnet-test-xunit.log,dotnet_build_failure,build,3,"Heterogeneous build, test, security and other failures",build,1,31
+azure-pipelines-dotnet-test.log,dotnet_build_failure,build,3,"Heterogeneous build, test, security and other failures",build,1,31
+bitbucket-pipelines-composer-platform.log,php_composer_failure,dependency,3,"Heterogeneous build, test, security and other failures",build,0,31
+buildkite-docker-build.log,docker_build_failure,build,3,"Heterogeneous build, test, security and other failures",build,1,31
+buildkite-oom-killed-137.log,runner_resource_exhaustion,infrastructure,3,"Heterogeneous build, test, security and other failures",build,0,31
+circleci-bundler-native-extension.log,ruby_bundle_failure,dependency,3,"Heterogeneous build, test, security and other failures",build,0,31
+concourse-ci-pip-resolution.log,python_dependency_resolution,dependency,4,Python pip dependency resolution failures,dependency,1,20
+dependency-failure.log,python_dependency_resolution,dependency,4,Python pip dependency resolution failures,dependency,1,20
+python-hatch-build-dependency.log,python_dependency_resolution,dependency,4,Python pip dependency resolution failures,dependency,1,20
+python-pip-conflicting-constraints.log,python_dependency_resolution,dependency,4,Python pip dependency resolution failures,dependency,1,20
+python-pip-constraint-marker-drift.log,python_dependency_resolution,dependency,4,Python pip dependency resolution failures,dependency,1,20
+python-pip-constraint-pin-drift.log,python_dependency_resolution,dependency,4,Python pip dependency resolution failures,dependency,1,20
+jenkins-pytest-collection-error.log,python_test_failure,test,5,Python pytest and assertion failures,test,1,11
+python-module-import.log,python_test_failure,test,5,Python pytest and assertion failures,test,1,11
+python-pytest-env-token-redacted.log,python_test_failure,test,5,Python pytest and assertion failures,test,1,11
+python-test-assert-json.log,python_test_failure,test,5,Python pytest and assertion failures,test,1,11
+python-test-failure.log,python_test_failure,test,5,Python pytest and assertion failures,test,1,11
+python-test-fixture-timeout.log,python_test_failure,test,5,Python pytest and assertion failures,test,1,11
+cargo-test-panic-failure.log,rust_test_failure,test,6,Rust compilation and test failures,test,1,13
+cirrus-ci-cargo-test-panic.log,rust_test_failure,test,6,Rust compilation and test failures,test,1,13
+elixir-mix-exunit-failure.log,elixir_mix_failure,test,6,Rust compilation and test failures,test,1,13
+ruby-rake-aborted.log,ruby_bundle_failure,dependency,6,Rust compilation and test failures,test,0,13
+rust-compile-error.log,rust_test_failure,test,6,Rust compilation and test failures,test,1,13
+rust-e0277-trait-bound.log,rust_test_failure,test,6,Rust compilation and test failures,test,1,13
+browser-playwright-navigation-timeout.log,browser_test_failure,test,7,Browser automation and test timeouts,test,1,8
+browser-playwright-webserver-timeout.log,browser_test_failure,test,7,Browser automation and test timeouts,test,1,8
+circleci-checkout-lfs-failure.log,git_checkout_failure,infrastructure,7,Browser automation and test timeouts,test,0,8
+cypress-browser-launch.log,browser_test_failure,test,7,Browser automation and test timeouts,test,1,8
+github-actions-job-timeout.log,ci_job_timeout,infrastructure,7,Browser automation and test timeouts,test,0,8
+gitlab-ci-job-timeout.log,ci_job_timeout,infrastructure,7,Browser automation and test timeouts,test,0,8
+circleci-oom-exit-137.log,runner_resource_exhaustion,infrastructure,3,"Heterogeneous build, test, security and other failures",build,0,31
+cloudbuild-golangci-lint-failure.log,go_lint,code_quality,3,"Heterogeneous build, test, security and other failures",build,0,31

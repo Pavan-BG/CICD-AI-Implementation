@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://patchrail.dev/schemas/reviewer-quick-check-artifacts.v1.schema.json",
+  "title": "PatchRail Reviewer Quick Check Artifact Manifest",
+  "description": "Local manifest emitted by patchrail evidence reviewer-packet --out-dir, with scripts/reviewer_quick_check.py --out-dir as a compatibility wrapper. The packet is a reviewer-facing local evidence bundle and never performs network, write, publish, or application-submission actions.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generated_from",
+    "network_required",
+    "write_action_required",
+    "application_form_submission_performed",
+    "artifacts",
+    "artifact_details"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "patchrail.reviewer_quick_check_artifacts.v1"
+    },
+    "generated_from": {
+      "const": "local_checkout"
+    },
+    "network_required": {
+      "const": false
+    },
+    "write_action_required": {
+      "const": false
+    },
+    "application_form_submission_performed": {
+      "const": false
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 15,
+      "uniqueItems": true,
+      "contains": {
+        "const": "reviewer-quick-check.md"
+      },
+      "items": {
+        "enum": [
+          "README.md",
+          "artifact-index.md",
+          "reviewer-quick-check.md",
+          "application-dossier.json",
+          "application-dossier.schema.json",
+          "application-dossier.txt",
+          "application-gate.txt",
+          "ci-triage-demo.md",
+          "control-plane-evidence.json",
+          "control-plane-evidence.md",
+          "http-api-evidence.json",
+          "http-api-evidence.md",
+          "release-readiness.json",
+          "release-readiness.md",
+          "reviewer-quick-check-artifacts.schema.json"
+        ]
+      }
+    },
+    "artifact_details": {
+      "type": "array",
+      "minItems": 15,
+      "description": "Offline integrity details for each reviewer packet artifact. Each path must also appear in artifacts.",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "size_bytes",
+          "sha256"
+        ],
+        "properties": {
+          "path": {
+            "enum": [
+              "README.md",
+              "artifact-index.md",
+              "reviewer-quick-check.md",
+              "application-dossier.json",
+              "application-dossier.schema.json",
+              "application-dossier.txt",
+              "application-gate.txt",
+              "ci-triage-demo.md",
+              "control-plane-evidence.json",
+              "control-plane-evidence.md",
+              "http-api-evidence.json",
+              "http-api-evidence.md",
+              "release-readiness.json",
+              "release-readiness.md",
+              "reviewer-quick-check-artifacts.schema.json"
+            ]
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

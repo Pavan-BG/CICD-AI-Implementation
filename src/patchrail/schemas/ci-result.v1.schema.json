@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://patchrail.dev/schemas/ci-result.v1.schema.json",
+  "title": "PatchRail CI Result",
+  "description": "Local CI failure classification result emitted by patchrail ci classify and patchrail ci explain --format json.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "failure_class",
+    "likely_subsystem",
+    "reproduction_command",
+    "minimal_repair_strategy",
+    "confidence",
+    "signals",
+    "requirements"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "patchrail.ci_result.v1"
+    },
+    "failure_class": {
+      "type": "string",
+      "enum": [
+        "unknown",
+        "runner_resource_exhaustion",
+        "network_transient_failure",
+        "ci_job_timeout",
+        "python_dependency_resolution",
+        "code_coverage_threshold",
+        "python_type_check",
+        "python_lint",
+        "pre_commit_hook_failure",
+        "python_test_failure",
+        "node_dependency_install",
+        "typescript_typecheck",
+        "javascript_lint",
+        "github_actions_workflow",
+        "artifact_or_cache_failure",
+        "security_scan_failure",
+        "dotnet_build_failure",
+        "java_build_failure",
+        "docker_build_failure",
+        "cpp_build_failure",
+        "browser_test_failure",
+        "rust_test_failure",
+        "ruby_bundle_failure",
+        "php_composer_failure",
+        "go_test_failure",
+        "node_test_failure",
+        "rust_lint",
+        "go_lint",
+        "release_publish_failure",
+        "git_checkout_failure",
+        "git_merge_conflict",
+        "secrets_or_permissions_failure",
+        "terraform_iac_failure",
+        "shell_lint",
+        "elixir_mix_failure",
+        "database_migration_failure",
+        "kubernetes_deploy_failure",
+        "helm_chart_failure",
+        "node_script_missing",
+        "docs_build_failure",
+        "xcode_build_failure"
+      ]
+    },
+    "likely_subsystem": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reproduction_command": {
+      "type": "string",
+      "minLength": 1
+    },
+    "minimal_repair_strategy": {
+      "type": "string",
+      "minLength": 1
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "signals": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "runner_errors": {
+      "description": "Error lines the CI runner annotated itself (GitHub Actions ##[error] / ::error::), redacted and de-duplicated. Present only on an unknown result that carried at least one: evidence of where the job died, not a classification of why.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "maxItems": 5
+    },
+    "log_tail": {
+      "description": "The last lines that carried output before the job stopped, redacted and de-duplicated. Present only on an unknown result with no runner-annotated error and no sign of success: raw log showing WHERE PatchRail lost the trail, never a classification of why.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "maxItems": 5
+    },
+    "likely_successful_run": {
+      "description": "True when the log announced a successful run and PatchRail found no failure to triage. Present only on an unknown result with no runner-annotated failure. PatchRail triages FAILED runs; point it at a failed run if you expected one.",
+      "type": "boolean"
+    },
+    "requirements": {
+      "type": "object",
+      "required": [
+        "billing_required",
+        "webhook_required_for_local_classification",
+        "github_app_required_for_local_classification",
+        "pr_creation_required",
+        "external_model_required"
+      ],
+      "properties": {
+        "billing_required": {
+          "const": false
+        },
+        "webhook_required_for_local_classification": {
+          "const": false
+        },
+        "github_app_required_for_local_classification": {
+          "const": false
+        },
+        "pr_creation_required": {
+          "type": "string",
+          "pattern": "^no;"
+        },
+        "external_model_required": {
+          "const": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "redaction": {
+      "type": "object",
+      "required": ["redacted", "redactions", "local_only"],
+      "properties": {
+        "redacted": {
+          "type": "string"
+        },
+        "redactions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "local_only": {
+          "const": true
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

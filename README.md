@@ -1,105 +1,234 @@
-# AI-Assisted CI/CD Failure Triage
+# PatchRail
 
-**Master's research implementation | PatchRail + TF-IDF + MiniLM + evidence-aware verification**
+Local-first CI failure triage for open-source maintainers. Paste a failing CI
+log, get the failure class, the reproduction command, and a suggested fix
+strategy — in seconds, fully offline.
 
-This repository contains a reproducible research prototype that investigates how AI-assisted log analysis can support failure diagnosis in Continuous Integration and Continuous Delivery (CI/CD) workflows. The implementation extends the existing open-source **PatchRail** CI failure classifier with semantic retrieval and an evidence-checking stage. It is a research extension, **not** a new CI/CD platform.
+[![PyPI](https://img.shields.io/pypi/v/patchrail)](https://pypi.org/project/patchrail/)
+[![CI](https://github.com/patchrail/patchrail/actions/workflows/ci.yml/badge.svg)](https://github.com/patchrail/patchrail/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/pypi/pyversions/patchrail)](https://pypi.org/project/patchrail/)
 
-## Project objectives
+![patchrail ci explain reading a failed CI log and emitting root cause, confidence, and a reproduce command](docs/assets/ci-explain-demo.gif)
 
-- Run the original PatchRail rule-based failure diagnosis as the baseline.
-- Retrieve similar incidents using **TF-IDF** or pretrained **MiniLM** embeddings when the baseline cannot give a named diagnosis.
-- Check log evidence before presenting an AI-generated suggestion; reject unsupported specific diagnoses or provide a broader investigation hint.
-- Compare baseline and extension behaviour on a small, exploratory set of CI failure logs.
-- Demonstrate reproducibility with Python tests, evaluation scripts, saved evidence, and an optional GitHub Actions workflow.
+The recording above is real output from the bundled
+`examples/ci-triage/typescript-import-type-drift.log` fixture. No model calls,
+no network, no telemetry: the classifier is a curated rule engine that runs
+entirely on your machine.
 
-**Safety boundary:** AI outputs are advisory and require human verification. The extension does not change the original CI job exit status or approve deployments.
+## Why maintainers use it
 
-## Technology
+- **40 failure classes** backed by real log signatures — dependency
+  resolution, flaky network, OOM-killed runners, Docker builds, lint,
+  type checks, docs-site builds, and test failures across Python, Node,
+  TypeScript, Go, Rust, Java, .NET, Ruby, PHP, C++, and Swift/Xcode. Run
+  `patchrail ci classes` to list them all (add `--format json` to check
+  coverage from a script).
+- **223 sanitized CI log fixtures** keep the classifier honest: every rule is
+  benchmarked against the public fixture zoo in `examples/ci-triage/` on every
+  test run.
+- **Benchmarked on real failed CI runs, misses included**: seven public logs from
+  pandas, deno, svelte, Home Assistant, Prometheus, Grafana and ruff, committed
+  unmodified so you can run them yourself — including the two PatchRail still
+  gets wrong. See [docs/real-world-benchmark.md](docs/real-world-benchmark.md).
+- **24 secret-redaction patterns** (GitHub/GitLab/npm/PyPI/AWS tokens, private
+  keys, JWTs, emails, home paths) so logs can be shared safely.
+- **Local-first by design**: no network access, no billing, no external model,
+  no telemetry. Nothing leaves the machine.
+- **Markdown for humans, JSON for automation** — pipe the same result into a
+  PR comment or a workflow step.
 
-Python 3.11+, PatchRail v0.7.6, scikit-learn/TF-IDF, Sentence Transformers (`all-MiniLM-L6-v2`), pytest, and GitHub Actions.
+## Quickstart
 
-## Repository contents
+PatchRail is published on PyPI:
 
-The project is currently provided as **`CICD implementation.zip`**. After extracting the archive, the main components are:
-
-```text
-S495 implementation/
-├── .github/workflows/research-ci-triage.yml  # Optional GitHub Actions demo
-├── implementation/PatchRail_AI_V3/           # Research extension and tests
-├── upstream/patchrail-main/                  # Original PatchRail source
-├── evidence/                                 # Local results, figures and audits
-├── START_HERE.md                             # Detailed running instructions
-├── RESULTS_INTERPRETATION.md                 # Results and limitations
-├── ATTRIBUTION_AND_LICENSE.md                # Source attribution
-├── RUN_WINDOWS_SETUP.cmd
-├── RUN_WINDOWS_OFFLINE.cmd
-└── RUN_WINDOWS_FULL.cmd
+```bash
+pipx install patchrail
 ```
 
-> **GitHub Actions note:** GitHub cannot run a workflow stored *inside* a ZIP. To enable the workflow, upload the **contents** of the extracted `S495 implementation` folder to the repository root, retaining the `.github/workflows/` path. Uploading only the ZIP is sufficient for sharing the archive, but not for executing the CI workflow on GitHub.
+Prefer not to install anything? With [uv](https://docs.astral.sh/uv/) you can run the
+same triage straight from PyPI — no install step, and it also reads from stdin:
 
-## Run locally (Windows 10/11)
-
-1. Download `CICD implementation.zip` and extract it.
-2. Open **Command Prompt** in the extracted `S495 implementation` folder.
-3. Install the dependencies and run the full comparison:
-
-```cmd
-RUN_WINDOWS_SETUP.cmd
-RUN_WINDOWS_FULL.cmd
+```bash
+uvx patchrail ci explain --log failed-ci.log
+# or pipe a run that just failed, no download step:
+gh run view <run-id> --log-failed --repo <owner/repo> | uvx patchrail ci explain
 ```
 
-`RUN_WINDOWS_FULL.cmd` runs the PatchRail benchmark, the V3 unit tests, the TF-IDF/MiniLM comparisons, and a sample single-log diagnosis. Outputs are written to `RUN_OUTPUT/`. The MiniLM model weights are **not included** in the ZIP and are downloaded on first use.
+Confirm which release you have:
 
-For the **TF-IDF-only** route, which does not require MiniLM model weights:
-
-```cmd
-python -m pip install -r implementation\PatchRail_AI_V3\requirements-v2.txt
-RUN_WINDOWS_OFFLINE.cmd
+```bash
+patchrail --version   # or: patchrail -V
+# patchrail 0.7.6
 ```
 
-The offline results are saved in `RUN_OUTPUT_OFFLINE/`. This route does **not** evaluate MiniLM.
+Classify any failed CI log:
 
-## GitHub Actions demonstration
+```bash
+patchrail ci explain --log failed-ci.log
+```
 
-After uploading the **extracted** project files to the repository root:
+Or try it on a bundled fixture from a clone of this repo:
 
-1. Open the repository's **Actions** tab.
-2. Choose **Research prototype CI failure triage demonstration**.
-3. Select **Run workflow** and choose `tfidf` (recommended first) or `minilm`.
-4. Review the job logs and download the `research-ci-failure-diagnosis` artifact.
+```bash
+git clone https://github.com/patchrail/patchrail
+cd patchrail
+patchrail ci explain --log examples/ci-triage/dependency-failure.log --format markdown
+```
 
-This is a **manual** workflow (`workflow_dispatch`). The supplied package contains its configuration, but a successful hosted run must be verified on GitHub before being reported as completed.
+Real output:
 
-## Evaluation evidence
+```markdown
+# PatchRail CI Report
 
-The package documents the following local checks:
+- Root cause: `python_dependency_resolution`
+- Confidence: `0.89`
+- Subsystem: Python dependency installation
+- Reproduce: `python -m pip install -r requirements.txt`
+- Suggested action: Pin or relax the conflicting dependency range, then rerun the same install command and the affected tests.
 
-| Check | Documented outcome |
-| --- | --- |
-| Original PatchRail curated-fixture benchmark | 223/223 |
-| Version 3 Python unit tests | 16 passed |
-| Exploratory public-log evaluation | 22 logs |
+## Evidence signals
 
-For the **locally reproduced TF-IDF comparison** on the 22 previously examined logs (using provisional researcher-assigned labels):
+- `Could not find a version that satisfies the requirement`
+- `Cannot install .*because these package versions have conflicting dependencies`
+- `ResolutionImpossible`
 
-| Method | Broad-label correct | Named suggestions | Incorrect named suggestions |
-| --- | ---: | ---: | ---: |
-| PatchRail baseline | 9/22 | 12/22 | 4 |
-| TF-IDF V2 | 9/22 | 13/22 | 5 |
-| TF-IDF V3 | 9/22 | 12/22 | 4 |
+## Safety
 
-The package also includes **researcher-provided Windows MiniLM results**, preserved separately from locally reproduced outputs. Those observations are not independent external validation.
+PatchRail classified this log locally. It did not create a pull request, post a comment, claim funding, or send data to an external service.
+```
 
-**Interpretation:** These exploratory, post-hoc results demonstrate an implemented evidence-checking approach; they do **not** establish generalisable accuracy gains, faster software delivery, improved DORA metrics, or proven root-cause correctness. Independent labels and untouched evaluation logs are required for stronger claims.
+It also reads from stdin, so you can point it straight at the run that just failed.
+With the [GitHub CLI](https://cli.github.com/), pipe the failing job's log in directly —
+no download step:
 
-Relevant files: `evidence/reproduced_here/`, `evidence/user_windows_v3_results/`, `RESULTS_INTERPRETATION.md`, and `SUBMISSION_CHECKLIST.md`.
+```bash
+gh run view <run-id> --log-failed --repo <owner/repo> | patchrail ci explain
+```
 
-## Attribution and licensing
+Point it at a *recent* failed run: GitHub expires job logs after a while, and
+`--log-failed` on an expired or still-green run pipes nothing in — PatchRail then
+exits `2` with a hint instead of guessing.
 
-- **PatchRail** is a third-party open-source project: https://github.com/patchrail/patchrail. Its original licence (Apache 2.0) is retained under `upstream/patchrail-main/LICENSE`.
-- The AI failure-triage implementation is a separate academic research extension of PatchRail.
-- MiniLM is an externally provided pretrained model; its weights are not included in this repository archive.
+PatchRail normalizes the `gh`/Actions line prefix (job, step, and timestamp columns),
+so piping the raw `gh` output classifies identically to a saved log file. Any log on
+stdin works the same way:
 
-See `ATTRIBUTION_AND_LICENSE.md` for provenance, authorship, and reuse information.
+```bash
+tail -n 200 failed-ci.log | patchrail ci explain
+```
 
+When no rule matches, PatchRail says `unknown` rather than guessing — but it still reports
+any line the CI runner itself annotated as an error (`##[error]`, `::error::`), so you get
+the line you would have scrolled to instead of a shrug. The class stays `unknown`: an
+annotation says *where* the job died, not *why*.
+
+Every failure class has a step-by-step remediation write-up in
+[docs/fix/](docs/fix/README.md).
+
+## GitHub Action
+
+Run the same triage on every red CI run with
+[`patchrail/ci-triage-action`](https://github.com/patchrail/ci-triage-action)
+(also on the
+[GitHub Marketplace](https://github.com/marketplace/actions/patchrail-ci-triage)).
+It classifies the log locally on the runner — no PR, no comment, nothing
+leaves the job:
+
+```yaml
+- name: PatchRail CI triage
+  if: failure()
+  uses: patchrail/ci-triage-action@v1
+  with:
+    log-path: test.log
+```
+
+The `@v1` drop-in exposes `failure-class`, `confidence`, and `guide-url`, plus a
+run annotation and job summary. See
+[docs/using-the-action.md](docs/using-the-action.md) for its full inputs and
+outputs, or [examples/ci-triage-action](examples/ci-triage-action/README.md) for
+the artifact shapes of both `@v1` and the richer in-repo composite.
+
+## Features
+
+| Feature | Status | Notes |
+| --- | --- | --- |
+| CI failure triage (`ci explain`, `ci classify`, `ci classes`) | Beta | 40 failure classes for GitHub Actions-style logs and common toolchains |
+| Secret redaction (`redact`, `ci explain --redact`) | Beta | 23 patterns for tokens, keys, emails, and home paths |
+| Reports | Beta | Markdown, JSON, and plain text |
+| Fixture benchmark (`ci benchmark`) | Beta | Scores the classifier against all 223 public fixtures |
+| GitHub Action | Beta | Read-only triage artifact on failed workflows |
+| Local queue / control plane (`queue`) | Experimental | SQLite-backed work items with human approval states |
+| Funded issue discovery (`funded-issues`) | Experimental (read-only) | Safe-only defaults, no claiming or commenting; see [docs/funded-issues-ethics.md](docs/funded-issues-ethics.md) |
+
+## Local-first & safety
+
+PatchRail never phones home. The classifier needs no API key, no GitHub App,
+no repo write permission, and no external model call. Write actions (PRs,
+comments, claims) are out of scope; anything that could become one sits behind
+an explicit human approval state.
+
+Secret redaction is a first-class feature, not an afterthought. Redact a log
+before sharing it anywhere:
+
+```bash
+patchrail redact --log failed.log > failed.redacted.log
+patchrail ci explain --redact --log failed.log
+```
+
+The redaction pass covers GitHub, GitLab, npm, PyPI, AWS, Stripe, Slack,
+Google, Hugging Face, and SendGrid credentials, private key blocks, JWTs,
+bearer tokens, URL-embedded credentials, `*_TOKEN`/`*_SECRET` environment
+assignments, email addresses, and user home paths.
+
+See [ETHICS.md](ETHICS.md), [SECURITY.md](SECURITY.md), and
+[docs/threat-model.md](docs/threat-model.md).
+
+## Roadmap
+
+- **v0.3** — public demo of the local agent control plane: SQLite-backed work
+  queue, approval gates, and audit export.
+- **v0.4** — ethical funded-maintenance workflow: read-only discovery with
+  human-gated follow-up, no automated claiming.
+
+Details in [docs/roadmap.md](docs/roadmap.md).
+
+## Documentation
+
+- [Quickstart](docs/quickstart.md)
+- [Real-world benchmark: seven public CI logs, misses included](docs/real-world-benchmark.md)
+- [jq cookbook for the JSON classifier output](docs/json-cookbook.md)
+- [Fix guides per failure class](docs/fix/README.md)
+- [CI Failure Zoo](docs/ci-failure-zoo.md)
+- [GitHub Actions CI triage](docs/github-action.md)
+- [Using the action in your own repository](docs/using-the-action.md)
+- [Agent Control Plane](docs/agent-control-plane.md)
+- [API reference](docs/api-reference.md)
+- [Threat model](docs/threat-model.md)
+- [Funded issue ethics](docs/funded-issues-ethics.md)
+
+## Contributing
+
+The fastest way in is **adding a CI fixture — it takes about 10 minutes**:
+grab a failed log, redact it, trim it to the smallest excerpt that still shows
+the root cause, and add it with its expected classification under
+`examples/ci-triage/`. The full path is in
+[CONTRIBUTING.md](CONTRIBUTING.md), and the
+[CI failure fixture issue template](.github/ISSUE_TEMPLATE/ci_failure_fixture.md)
+works if you are not ready to open a pull request.
+
+Issues labeled
+[`good first issue`](https://github.com/patchrail/patchrail/labels/good%20first%20issue)
+are scoped for first-time contributors.
+
+Run the checks locally before opening a PR:
+
+```bash
+uv run --extra dev pytest -q
+uv run --extra dev ruff check .
+uv run --extra dev patchrail ci benchmark examples/ci-triage --format json
+```
+
+## License
+
+Apache-2.0.
