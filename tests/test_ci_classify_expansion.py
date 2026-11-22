@@ -1,0 +1,2127 @@
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import time
+import unittest
+from pathlib import Path
+
+from patchrail.ci.classify import classify_ci_log, redact_ci_log
+
+
+class NodeTestFailureClassification(unittest.TestCase):
+    def test_jest_run_classifies_as_node_test_failure(self) -> None:
+        log = (
+            "Run npm test\n"
+            "> demo@1.0.0 test\n"
+            "> jest --ci --coverage=false\n"
+            " FAIL  src/utils/math.test.ts\n"
+            "  math > adds numbers\n"
+            "    Expected: 4\n"
+            "    Received: 5\n"
+            "      expect(received).toEqual(expected)\n"
+            "Tests:       1 failed, 12 passed, 13 total\n"
+            "Test Suites: 1 failed, 4 passed, 5 total\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "node_test_failure")
+        self.assertEqual(result["requirements"]["external_model_required"], False)
+        self.assertIn("jest", result["reproduction_command"])
+
+    def test_vitest_run_classifies_as_node_test_failure(self) -> None:
+        log = (
+            "Run npx vitest run\n"
+            " FAIL  test/parser.spec.ts > parser > handles empty input\n"
+            "AssertionError: expected undefined to equal []\n"
+            " ❯ test/parser.spec.ts:14:22\n"
+            "Tests:  2 failed, 40 passed\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "node_test_failure")
+
+    def test_pure_jest_log_wins_over_browser_test_failure(self) -> None:
+        log = (
+            "Run npx jest\n"
+            " FAIL  src/checkout/cart.test.tsx\n"
+            "  ● cart > totals items > sums prices\n"
+            "    Expected: 30\n"
+            "    Received: 25\n"
+            "Tests:       2 failed, 18 passed, 20 total\n"
+            "Test Suites: 1 failed, 6 passed, 7 total\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "node_test_failure")
+
+    def test_playwright_log_stays_browser_test_failure_not_node_test(self) -> None:
+        log = (
+            "Run npx playwright test\n"
+            "Running 12 tests using 4 workers\n"
+            "  1) [chromium] login.spec.ts:8:5 › login flow\n"
+            "    Error: Timeout 30000ms exceeded.\n"
+            "    locator('#submit')\n"
+            "    browserType.launch: Executable doesn't exist\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "browser_test_failure")
+
+
+class NodeDependencyInstallClassification(unittest.TestCase):
+    def test_npm_missing_script_classifies_as_node_script_missing(self) -> None:
+        log = (
+            "Run npm run build\n"
+            'npm ERR! Missing script: "build"\n'
+            "npm ERR! To see a list of scripts, run:\n"
+            "npm ERR!   npm run\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "node_script_missing")
+        self.assertIn("package script", result["minimal_repair_strategy"])
+
+    def test_pnpm_missing_script_wins_over_node_dependency_install(self) -> None:
+        log = (
+            "Run pnpm --filter web lint\n"
+            'ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command "lint" not found\n'
+            "Lockfile is up to date, resolution step is skipped\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "node_script_missing")
+
+    def test_npm_eresolve_classifies_as_node_dependency_install(self) -> None:
+        log = (
+            "Run npm ci\n"
+            "npm error code ERESOLVE\n"
+            "npm error ERESOLVE unable to resolve dependency tree\n"
+            "npm error While resolving: demo@1.0.0\n"
+            "npm error Could not resolve dependency:\n"
+            "npm error Fix the upstream dependency conflict, or retry this command with --force\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "node_dependency_install")
+        self.assertIn("lockfile", result["minimal_repair_strategy"])
+
+    def test_registry_404_classifies_as_node_dependency_install(self) -> None:
+        log = (
+            "Run npm install\n"
+            "npm error code E404\n"
+            "npm error 404 Not Found - GET https://registry.npmjs.org/@acme%2fnope\n"
+            "npm error 404  '@acme/nope@1.0.0' is not in this registry.\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "node_dependency_install")
+
+    def test_yarn_classic_unexpected_error_is_node_dependency_install(self) -> None:
+        log = (
+            "Run yarn install --frozen-lockfile\n"
+            "yarn install v1.22.19\n"
+            'error An unexpected error occurred: couldn\'t find package "left-pad@^2.0.0".\n'
+            "info Visit https://yarnpkg.com/en/docs/cli/install for documentation.\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "node_dependency_install")
+
+    def test_npm_eresolve_wins_over_node_test_failure_signal(self) -> None:
+        log = (
+            "Run npm ci && npm test\n"
+            "npm error code ERESOLVE\n"
+            "npm error ERESOLVE unable to resolve dependency tree\n"
+            "npm error Could not resolve dependency:\n"
+            "npm error Conflicting peer dependency: react@18.2.0\n"
+            "npm error Fix the upstream dependency conflict, or retry with --force\n"
+            "(the jest test step never ran)\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "node_dependency_install")
+
+    def test_pnpm_minimum_release_age_violation_is_node_dependency_install(self) -> None:
+        # Real 2026 failure mode: pnpm's supply-chain minimumReleaseAge gate rejects a
+        # too-new lockfile entry, surfacing through `make ui-install` in a job whose name
+        # ("Go tests") does not describe the real failure. The pnpm signal must still win.
+        log = (
+            "cd web/ui/react-app && pnpm install\n"
+            "Verifying lockfile against supply-chain policies (1423 entries)...\n"
+            "Lockfile failed supply-chain policy check (1423 entries in 3.5s)\n"
+            "[ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION] 1 lockfile entries failed verification:\n"
+            "  jest-fetch-mock@3.2.0 was published within the minimumReleaseAge cutoff\n"
+            "The lockfile contains entries that the active policies reject. "
+            'Run "pnpm clean --lockfile" and then "pnpm install" to rebuild.\n'
+            "make: *** [Makefile:68: ui-install] Error 1\n"
+            "go: downloading github.com/prometheus/common v0.66.1\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "node_dependency_install")
+        self.assertIn(r"ERR_PNPM_MINIMUM_RELEASE_AGE", result["signals"])
+        self.assertIn("minimumReleaseAge", result["minimal_repair_strategy"])
+
+
+class RustLintClassification(unittest.TestCase):
+    def test_clippy_run_classifies_as_rust_lint(self) -> None:
+        log = (
+            "Run cargo clippy --all-targets --all-features -- -D warnings\n"
+            "warning: clippy::needless_return\n"
+            "error[clippy::needless_return]: unneeded `return` statement\n"
+            "  --> src/lib.rs:12:5\n"
+            "help: remove `return`\n"
+            "error: could not compile due to clippy warnings\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "rust_lint")
+        self.assertIn("clippy", result["reproduction_command"])
+
+    def test_clippy_log_wins_over_rust_test_failure(self) -> None:
+        log = (
+            "Run cargo clippy --workspace -- -D warnings\n"
+            "warning: clippy::redundant_clone\n"
+            "error[clippy::redundant_clone]: redundant clone\n"
+            "  --> src/handler.rs:30:9\n"
+            "error: could not compile due to clippy warnings\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "rust_lint")
+
+
+class RustCiBoilerplateClassification(unittest.TestCase):
+    """A real Rust CI failure must not be hijacked by generic boilerplate.
+
+    Regression for a real ``tokio-rs/tokio`` rustdoc run that was misclassified:
+    the ``Swatinem/rust-cache`` action prints ``Lockfiles considered:`` (matched
+    the old bare ``lockfile`` pattern -> node_dependency_install) and cargo prints
+    ``build failed, waiting for other jobs`` (matched the case-insensitive
+    ``Build FAILED`` / ``BUILD FAILED`` banners -> dotnet/java_build_failure).
+    """
+
+    def test_rustdoc_compile_error_is_rust_not_node_or_dotnet(self) -> None:
+        log = (
+            "env:\n"
+            "  rust_clippy: 1.88\n"
+            "Run Swatinem/rust-cache@v2\n"
+            ".. Lockfiles considered:\n"
+            "  Cargo.lock\n"
+            "Run cargo doc --lib --no-deps\n"
+            "error[E0433]: failed to resolve: could not find `windows` in `os`\n"
+            "   --> tokio/src/net/windows/named_pipe.rs:113:23\n"
+            "error: could not document `tokio`\n"
+            "warning: build failed, waiting for other jobs to finish...\n"
+            "##[error]Process completed with exit code 101.\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "rust_test_failure")
+        self.assertNotEqual(result["failure_class"], "node_dependency_install")
+
+    def test_rust_cache_lockfiles_line_alone_is_not_node(self) -> None:
+        # rust-cache boilerplate must not, on its own, read as a Node lockfile issue.
+        log = "Run Swatinem/rust-cache@v2\n.. Lockfiles considered:\n  Cargo.lock\n"
+        self.assertNotEqual(classify_ci_log(log)["failure_class"], "node_dependency_install")
+
+    def test_cargo_build_failed_line_is_not_dotnet_or_java(self) -> None:
+        # cargo's lowercase "build failed" must not match the msbuild/Gradle banners.
+        log = "Run cargo build\nwarning: build failed, waiting for other jobs to finish...\n"
+        actual = classify_ci_log(log)["failure_class"]
+        self.assertNotIn(actual, {"dotnet_build_failure", "java_build_failure"})
+
+
+class PythonLintToolMentionClassification(unittest.TestCase):
+    """A lint *failure* needs failure evidence, not a bare tool mention.
+
+    Regression for a real ``astral-sh/ruff`` ``cargo test (linux)`` run piped in
+    the exact ``gh run view --log-failed`` format. Because ruff/ty model Python
+    linters, the log mentioned ``ruff``/``pylint``/``isort``/``pyflakes``/
+    ``pycodestyle`` thousands of times with zero actual lint diagnostics; the old
+    bare tool-name patterns accumulated 5 signals and hijacked the Rust test
+    panic (``python_lint`` 0.95) over the real ``rust_test_failure``.
+    """
+
+    def test_rust_panic_wins_over_python_lint_tool_mentions(self) -> None:
+        log = (
+            "cargo test (linux)\tUNKNOWN STEP\t2026-07-08T07:11:18Z Run cargo test\n"
+            "cargo test (linux)\tUNKNOWN STEP\t2026-07-08T07:12:19Z ruff pylint isort "
+            "pyflakes pycodestyle are all mentioned here as concepts\n"
+            "cargo test (linux)\tUNKNOWN STEP\t2026-07-08T07:12:19Z thread '<unnamed>' "
+            "(4467) panicked at crates/mdtest/src/lib.rs:154:5:\n"
+            "cargo test (linux)\tUNKNOWN STEP\t2026-07-08T07:12:24Z test result: FAILED. "
+            "472 passed; 1 failed; 0 ignored\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "rust_test_failure")
+        self.assertNotEqual(result["failure_class"], "python_lint")
+
+    def test_bare_tool_mentions_alone_are_not_python_lint(self) -> None:
+        # Mentioning the linters without any diagnostic must not read as a failure.
+        log = (
+            "We use ruff, flake8, pylint, isort, pycodestyle and pyflakes in this repo.\n"
+            "All checks passed.\n"
+        )
+        self.assertNotEqual(classify_ci_log(log)["failure_class"], "python_lint")
+
+    def test_real_ruff_diagnostics_still_classify_as_python_lint(self) -> None:
+        # Recall guard: an actual ruff failure with diagnostics must still land.
+        log = (
+            "Run ruff check .\napp/main.py:1:8: F401 [*] `os` imported but unused\nFound 1 error.\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "python_lint")
+
+    def test_flake8_diagnostic_code_classifies_as_python_lint(self) -> None:
+        # The generic ``file.py:line:col: CODE`` diagnostic is a strong lint signal.
+        log = (
+            "Run flake8 .\n"
+            "src/app.py:12:80: E501 line too long (92 > 79 characters)\n"
+            "src/app.py:3:1: F811 redefinition of unused 'json'\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "python_lint")
+
+
+class RustPanicThreadIdClassification(unittest.TestCase):
+    """Modern Rust prints a thread id for unnamed threads before ``panicked``."""
+
+    def test_unnamed_thread_id_panic_is_recognized(self) -> None:
+        log = (
+            "Run cargo test\n"
+            "thread '<unnamed>' (70523) panicked at src/lib.rs:9:5:\n"
+            "assertion failed\n"
+            "test result: FAILED. 1 passed; 1 failed\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "rust_test_failure")
+        self.assertIn(
+            r"thread '[^']*'(?: \(\d+\))? panicked",
+            result["signals"],
+        )
+
+    def test_classic_named_thread_panic_still_recognized(self) -> None:
+        log = (
+            "Run cargo test\n"
+            "thread 'main' panicked at src/main.rs:2:5:\n"
+            "test result: FAILED. 0 passed; 1 failed\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "rust_test_failure")
+
+
+class GoLintClassification(unittest.TestCase):
+    def test_golangci_lint_run_classifies_as_go_lint(self) -> None:
+        log = (
+            "Run golangci-lint run ./...\n"
+            "internal/server/handler.go:42:6: func unusedHelper is unused (unused)\n"
+            "internal/server/handler.go:51:2: ineffectual assignment to err (ineffassign)\n"
+            "internal/server/handler.go:60:9: error return value not checked (errcheck)\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "go_lint")
+        self.assertIn("golangci-lint", result["reproduction_command"])
+
+    def test_golangci_lint_log_wins_over_go_test_failure(self) -> None:
+        log = (
+            "Run golangci-lint run ./...\n"
+            "internal/api/router.go:18:2: ineffectual assignment to ctx (ineffassign)\n"
+            "internal/api/router.go:25:6: func mountRoutes is unused (unused)\n"
+            "internal/api/router.go:31:9: error return value not checked (errcheck)\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "go_lint")
+
+    def test_pytest_log_mentioning_ruff_stays_python_test_failure(self) -> None:
+        log = (
+            "Run python -m pytest -q\n"
+            "============================= test session starts =============================\n"
+            "(we also run ruff check in a separate lint job)\n"
+            "FAILED tests/test_app.py::test_ok - AssertionError: 1 != 2\n"
+            "=========================== 1 failed, 30 passed ===========================\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "python_test_failure")
+
+
+class TypescriptTypecheckClassification(unittest.TestCase):
+    def test_tsc_run_classifies_as_typescript_typecheck(self) -> None:
+        log = (
+            "Run npm run typecheck\n"
+            "> tsc --noEmit\n"
+            "src/api.ts:14:7 - error TS2339: Property 'user' does not exist on type 'Session'.\n"
+            "src/api.ts:22:3 - error TS2769: No overload matches this call.\n"
+            "src/api.ts:30:5 - error TS2531: Object is possibly 'null'.\n"
+            "src/api.ts:40:9 - error TS2345: Argument of type 'number' "
+            "is not assignable to parameter of type 'string'.\n"
+            "tsc exited with code 2\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "typescript_typecheck")
+        self.assertIn("typecheck", result["minimal_repair_strategy"])
+
+    def test_ts_node_compile_error_classifies_as_typescript_typecheck(self) -> None:
+        log = (
+            "Run npm start\n"
+            "TSError: ⨯ Unable to compile TypeScript:\n"
+            "src/index.ts:5:18 - error TS2304: Cannot find name 'process'.\n"
+            "Property 'env' does not exist on type 'unknown'.\n"
+            "Type checking failed\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "typescript_typecheck")
+
+    def test_tsc_log_wins_over_javascript_lint(self) -> None:
+        log = (
+            "Run npm run typecheck\n"
+            "> tsc --noEmit\n"
+            "src/store.ts:12:5 - error TS2322: Type 'string' is not assignable to type 'number'.\n"
+            "src/store.ts:18:9 - error TS2339: Property 'id' does not exist on type 'State'.\n"
+            "src/store.ts:24:3 - error TS2769: No overload matches this call.\n"
+            "(a separate eslint job runs prettier and no-unused-vars checks)\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "typescript_typecheck")
+
+    def test_pure_mypy_log_does_not_fall_into_python_test_failure(self) -> None:
+        log = (
+            "Run mypy .\n"
+            'src/app.py:14: error: Incompatible return value type (got "str", '
+            'expected "int")  [return-value]\n'
+            'src/app.py:20: error: Argument 1 to "f" has incompatible type "int"; '
+            'expected "str"  [arg-type]\n'
+            "Found 2 errors in 1 file (checked 30 source files)\n"
+        )
+        result = classify_ci_log(log)
+        self.assertNotEqual(result["failure_class"], "python_test_failure")
+        self.assertEqual(result["failure_class"], "python_type_check")
+
+
+class ReleasePublishFailureClassification(unittest.TestCase):
+    def test_npm_publish_e403_classifies_as_release_publish_failure(self) -> None:
+        log = (
+            "Run npm publish --access public\n"
+            "npm notice Publishing to https://registry.npmjs.org with tag latest\n"
+            "npm error code E403\n"
+            "npm error 403 403 Forbidden - PUT https://registry.npmjs.org/demo\n"
+            "npm error 403 You cannot publish over the previously published versions: 1.2.3.\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "release_publish_failure")
+        self.assertIn("publish", result["reproduction_command"])
+
+    def test_twine_file_already_exists_classifies_as_release_publish_failure(self) -> None:
+        log = (
+            "Run twine upload dist/*\n"
+            "Uploading distributions to https://upload.pypi.org/legacy/\n"
+            "Uploading demo-1.2.3-py3-none-any.whl\n"
+            "HTTPError: 400 Bad Request from https://upload.pypi.org/legacy/\n"
+            "File already exists. See https://pypi.org/help/#file-name-reuse for more.\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "release_publish_failure")
+
+    def test_cargo_publish_already_uploaded_classifies_as_release_publish_failure(self) -> None:
+        log = (
+            "Run cargo publish\n"
+            "Packaging demo v0.3.1\n"
+            "Uploading demo v0.3.1 to registry https://crates.io\n"
+            "error: failed to publish to registry at https://crates.io\n"
+            "crate version 0.3.1 is already uploaded\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "release_publish_failure")
+
+    def test_npm_publish_e403_wins_over_node_dependency_install(self) -> None:
+        log = (
+            "Run npm publish\n"
+            "npm error code E403\n"
+            "npm error 403 You cannot publish over the previously published versions: 2.0.0.\n"
+            "npm ERR! A complete log of this run can be found in npm-debug.log\n"
+            "npm error EPUBLISHCONFLICT cannot modify pre-existing version: 2.0.0\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "release_publish_failure")
+
+    def test_publish_log_with_npm_token_redacts_and_still_classifies(self) -> None:
+        token = "npm_" + "abcdefghijklmnopqrstuvwxyz1234"
+        log = (
+            "Run npm publish\n"
+            f"//registry.npmjs.org/:_authToken={token}\n"
+            "npm error code ENEEDAUTH\n"
+            "npm error need auth This command requires you to be logged in.\n"
+            "File already exists\n"
+        )
+        redacted = redact_ci_log(log)
+        self.assertNotIn(token, redacted["text"])
+        self.assertEqual(redacted["redactions"].get("npm_token"), 1)
+        self.assertEqual(
+            classify_ci_log(redacted["text"])["failure_class"], "release_publish_failure"
+        )
+
+
+class GitCheckoutFailureClassification(unittest.TestCase):
+    def test_checkout_auth_failure_classifies_as_git_checkout_failure(self) -> None:
+        log = (
+            "Run actions/checkout@v4\n"
+            "Syncing repository: acme/private\n"
+            "fatal: could not read Username for 'https://github.com': terminal prompts disabled\n"
+            "Repository not found\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "git_checkout_failure")
+        self.assertIn("checkout", result["reproduction_command"])
+
+    def test_submodule_clone_failure_classifies_as_git_checkout_failure(self) -> None:
+        log = (
+            "Run actions/checkout@v4 with submodules: recursive\n"
+            "fatal: clone of 'git@github.com:acme/private.git' into submodule path failed\n"
+            "Failed to recurse into submodule path vendor/lib\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "git_checkout_failure")
+
+    def test_git_lfs_smudge_failure_classifies_as_git_checkout_failure(self) -> None:
+        log = (
+            "Run actions/checkout@v4 with lfs: true\n"
+            "Downloading lfs objects for repository\n"
+            "smudge filter lfs failed\n"
+            "error downloading object: assets/model.bin (a1b2c3)\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "git_checkout_failure")
+
+    def test_checkout_failure_wins_over_github_actions_workflow(self) -> None:
+        log = (
+            "Run actions/checkout@v4\n"
+            "Job defined in .github/workflows/ci.yml started the checkout step\n"
+            "fatal: could not read Username for 'https://github.com'\n"
+            "error: pathspec 'release-ref' did not match any file(s) known to git\n"
+            "reference is not a tree: 0123456789abcdef\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "git_checkout_failure")
+
+    def test_checkout_log_with_token_url_redacts_and_still_classifies(self) -> None:
+        token = "ghp_" + "abcdefghijklmnopqrstuvwxyz123456"
+        log = (
+            "Run actions/checkout@v4\n"
+            "fatal: unable to access "
+            f"'https://x-access-token:{token}@github.com/acme/repo.git/'\n"
+            "fatal: could not read Username for 'https://github.com'\n"
+            "Repository not found\n"
+        )
+        redacted = redact_ci_log(log)
+        self.assertNotIn(token, redacted["text"])
+        self.assertEqual(redacted["redactions"].get("url_credentials"), 1)
+        self.assertEqual(classify_ci_log(redacted["text"])["failure_class"], "git_checkout_failure")
+
+
+class GitHubActionsBoilerplateFalsePositives(unittest.TestCase):
+    """Regression: real GitHub Actions logs always carry `actions/checkout` setup and
+    a `git submodule foreach` post-job cleanup line, even when checkout succeeded.
+    Those must not be read as a checkout failure. Dogfooded against a real
+    pallets/flask CI run (2026-07-08) whose pytest jobs failed on a conftest
+    SyntaxError but were misclassified as git_checkout_failure."""
+
+    def test_pytest_conftest_import_error_is_python_test_failure_not_git_checkout(self) -> None:
+        log = (
+            "##[group]Run actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd\n"
+            "Syncing repository: pallets/flask\n"
+            "##[endgroup]\n"
+            "py3.10: commands[0]> pytest -v --tb=short\n"
+            "ImportError while loading conftest '/home/runner/work/flask/flask/tests/conftest.py'.\n"
+            "tests/conftest.py:7: in <module>\n"
+            "    from flask import Flask\n"
+            "E       from __future__ import annotations\n"
+            "E   SyntaxError: from __future__ imports must occur at the beginning of the file\n"
+            "py3.10: exit 4 (0.78 seconds)\n"
+            "##[error]Process completed with exit code 4.\n"
+            "Post job cleanup.\n"
+            '[command]/usr/bin/git submodule foreach --recursive sh -c "git config ..."\n'
+            "Cleaning up orphan processes\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "python_test_failure")
+        self.assertIn("pytest", result["reproduction_command"])
+
+    def test_successful_checkout_boilerplate_alone_is_not_git_checkout_failure(self) -> None:
+        log = (
+            "##[group]Run actions/checkout@v4\n"
+            "Syncing repository: acme/widget\n"
+            "##[endgroup]\n"
+            "Post job cleanup.\n"
+            '[command]/usr/bin/git submodule foreach --recursive sh -c "git config ..."\n'
+            "Cleaning up orphan processes\n"
+        )
+        self.assertNotEqual(classify_ci_log(log)["failure_class"], "git_checkout_failure")
+
+
+class GitHubActionsWorkflowReDoS(unittest.TestCase):
+    """Regression: the github_actions_workflow rule paired two unanchored
+    lookaheads ``(?=[\\s\\S]*...)(?=[\\s\\S]*...)``. Under re.search that compound
+    is retried at every start position, so a large log that mentions
+    ``.github/workflows/*.yml`` (every checkout step does) but *not* a
+    workflow-error phrase drove the matcher into O(n^2) backtracking and hung for
+    minutes. Dogfooded against a real cli/cli Go CI run (2026-07-08, ~200 KB) that
+    pegged a core at 100% and never returned. The pattern is now anchored with
+    ``\\A`` so the lookahead is evaluated once, in linear time."""
+
+    def test_large_go_log_with_workflow_path_classifies_fast(self) -> None:
+        # Reproduce the trigger: many `.github/workflows/ci.yml` checkout lines
+        # (no workflow-error phrase) around a genuine Go test failure, at a size
+        # that made the old unanchored lookahead hang.
+        checkout = (
+            "##[group]Run actions/checkout@v4\n"
+            "Syncing repository: cli/cli\n"
+            ".github/workflows/ci.yml\n"
+            "##[endgroup]\n"
+        )
+        filler = "ok  \tgithub.com/cli/cli/v2/pkg/foo\t0.031s\n" * 4000
+        failure = (
+            "--- FAIL: TestThing (0.00s)\n"
+            "    thing_test.go:42: expected 3, got 4\n"
+            "FAIL\tgithub.com/cli/cli/v2/pkg/bar\t0.12s\n"
+            "FAIL\n"
+        )
+        log = checkout * 12 + filler + failure
+        self.assertGreater(len(log), 150_000)
+
+        start = time.perf_counter()
+        result = classify_ci_log(log)
+        elapsed = time.perf_counter() - start
+
+        # The fixed linear-time matcher classifies this in well under a second;
+        # the old O(n^2) version took minutes. A generous ceiling keeps the guard
+        # meaningful without being flaky on a loaded CI runner.
+        self.assertLess(elapsed, 10.0)
+        self.assertEqual(result["failure_class"], "go_test_failure")
+
+    def test_genuine_invalid_workflow_file_still_classifies(self) -> None:
+        # The \A anchor must preserve the "workflow path AND error phrase present
+        # anywhere in the log" signal that identifies a real workflow-wiring
+        # failure -- otherwise the fix would silently weaken the rule.
+        log = (
+            "##[group]Run actions/checkout@v4\n"
+            ".github/workflows/deploy.yml\n"
+            "##[endgroup]\n"
+            "Error: .github/workflows/deploy.yml: Invalid workflow file\n"
+            "The workflow is not valid. .github/workflows/deploy.yml (Line: 12, Col: 7):\n"
+            "Unexpected value 'runs-on'\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "github_actions_workflow")
+        self.assertIn("actionlint", result["reproduction_command"])
+
+
+class HelmTemplateReDoS(unittest.TestCase):
+    """Regression: the helm_chart_failure rule carried
+    ``Error: template: .* executing .* at <.*>:`` -- three greedy, unanchored
+    ``.*`` segments whose intermediate literals (`` executing ``, `` at ``) can
+    reappear many times inside one line. Under re.search that is O(n^3): a single
+    long line that starts ``Error: template:`` but never closes with ``>:`` drove
+    the matcher to seconds-to-minutes (13ms -> 6.4s across 200->1600 hostile reps,
+    same catastrophic-backtracking class as the github_actions_workflow hang).
+    The greedy segments are now bounded by newline-excluding negated classes
+    (``[^<\\n]*?``/``[^"\\n]*``/``[^>\\n]*``), which keeps the single-line match
+    semantics but evaluates in linear time."""
+
+    def test_long_helm_template_line_classifies_fast(self) -> None:
+        # A single ~250 KB line that opens with the helm-template signature and
+        # repeats the intermediate literals but never completes the match -- the
+        # exact shape that made the old three-``.*`` pattern blow up.
+        hostile_line = "Error: template: " + ' executing "x" at <y ' * 12_000 + " zzz"
+        log = "Run helm template ./chart\n" + hostile_line + "\n"
+        self.assertGreater(len(log), 200_000)
+
+        start = time.perf_counter()
+        classify_ci_log(log)
+        elapsed = time.perf_counter() - start
+
+        # Linear matcher returns in milliseconds; the old O(n^3) form took
+        # seconds-to-minutes. Generous ceiling keeps the guard non-flaky on a
+        # loaded CI runner while still catching a regression to backtracking.
+        self.assertLess(elapsed, 5.0)
+
+    def test_genuine_helm_template_error_still_classifies(self) -> None:
+        # The bounded classes must preserve the "bare `helm template` render
+        # error" signal (no INSTALLATION/UPGRADE FAILED wrapper), or the fix
+        # would silently weaken the rule.
+        log = (
+            "Run helm template web ./chart -f values-prod.yaml\n"
+            "Error: template: web/templates/deployment.yaml:14:8: "
+            'executing "web/templates/deployment.yaml" at <.Values.image.tag>: '
+            "nil pointer evaluating interface {}.Tag\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "helm_chart_failure")
+
+
+class GitMergeConflictClassification(unittest.TestCase):
+    def test_automatic_merge_failed_classifies_as_git_merge_conflict(self) -> None:
+        log = (
+            "Run git merge origin/main\n"
+            "Auto-merging src/app.py\n"
+            "CONFLICT (content): Merge conflict in src/app.py\n"
+            "Automatic merge failed; fix conflicts and then commit the result\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "git_merge_conflict")
+        self.assertIn("conflict", result["minimal_repair_strategy"])
+
+    def test_rebase_conflict_classifies_as_git_merge_conflict(self) -> None:
+        log = (
+            "Run git rebase origin/main\n"
+            "error: could not apply 0a1b2c3 feat: add widget\n"
+            "hint: after resolving the conflicts, mark the corrected paths\n"
+            "CONFLICT (content): Merge conflict in lib/widget.ts\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "git_merge_conflict")
+
+    def test_unmerged_paths_classifies_as_git_merge_conflict(self) -> None:
+        log = (
+            "error: Merging is not possible because you have unmerged files\n"
+            "Unmerged paths:\n"
+            "  both modified:   README.md\n"
+            "Resolve all conflicts manually, mark them as resolved\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "git_merge_conflict")
+
+    def test_merge_conflict_wins_over_git_checkout_failure(self) -> None:
+        log = (
+            "Run actions/checkout@v4\n"
+            "Merging the base branch into the PR head\n"
+            "Auto-merging src/main.py\n"
+            "CONFLICT (content): Merge conflict in src/main.py\n"
+            "Automatic merge failed; fix conflicts and then commit the result\n"
+            "error: Merging is not possible because you have unmerged files\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "git_merge_conflict")
+
+
+class SecretsOrPermissionsFailureClassification(unittest.TestCase):
+    def test_resource_not_accessible_token_scope_classifies_as_secrets(self) -> None:
+        log = (
+            "Run gh pr comment 5 --body-file out.md\n"
+            "Resource not accessible by integration\n"
+            "gh: this token lacks the pull-requests: write permission\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "secrets_or_permissions_failure")
+        self.assertIn("permission", result["minimal_repair_strategy"])
+
+    def test_missing_input_classifies_as_secrets_or_permissions_failure(self) -> None:
+        log = (
+            "Run acme/deploy-action@v1\n"
+            "Error: Input required and not supplied: token\n"
+            "the DEPLOY_KEY secret is not set for this environment\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "secrets_or_permissions_failure")
+
+    def test_push_permission_denied_classifies_as_secrets_or_permissions_failure(self) -> None:
+        log = (
+            "Run git push origin HEAD:main\n"
+            "remote: Permission to acme/repo.git denied to github-actions[bot].\n"
+            "refusing to allow a GitHub App to create or update workflow "
+            ".github/workflows/release.yml without workflows permission\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "secrets_or_permissions_failure")
+
+    def test_permissions_failure_wins_over_github_actions_workflow(self) -> None:
+        log = (
+            "Run git push\n"
+            "Job from .github/workflows/release.yml attempted to push tags\n"
+            "Resource not accessible by integration\n"
+            "remote: Permission to acme/repo.git denied to github-actions[bot].\n"
+            "refusing to allow a GitHub App to create or update workflow "
+            "without workflows permission\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "secrets_or_permissions_failure")
+
+    def test_secret_value_in_log_redacts_and_still_classifies(self) -> None:
+        secret = "ghp_" + "ZYXWVUTSRQPONMLKJIHGFEDCBA987654"
+        log = (
+            "Run acme/deploy-action@v1\n"
+            f"DEPLOY_TOKEN={secret}\n"
+            "Error: Input required and not supplied: api-key\n"
+            "the API_KEY secret is not set for this environment\n"
+        )
+        redacted = redact_ci_log(log)
+        self.assertNotIn(secret, redacted["text"])
+        self.assertIn("DEPLOY_TOKEN=<redacted>", redacted["text"])
+        self.assertEqual(
+            classify_ci_log(redacted["text"])["failure_class"],
+            "secrets_or_permissions_failure",
+        )
+
+
+class RedactionExpansion(unittest.TestCase):
+    def test_url_credentials_redacted_in_git_clone_with_token(self) -> None:
+        token = "ghp_" + "abcdefghijklmnopqrstuvwxyz123456"
+        log = (
+            "fatal: unable to access "
+            f"https://x-access-token:{token}@github.com/acme/repo.git/: "
+            "The requested URL returned error: 403\n"
+        )
+        result = redact_ci_log(log)
+        self.assertIn("https://<credentials>@github.com/acme/repo.git/", result["text"])
+        self.assertNotIn("x-access-token:", result["text"])
+        self.assertNotIn(token, result["text"])
+        self.assertEqual(result["redactions"].get("url_credentials"), 1)
+
+    def test_url_credentials_redacted_in_postgres_dsn(self) -> None:
+        log = (
+            "sqlalchemy.exc.OperationalError: could not connect to "
+            "postgres://dbuser:s3cr3tPass@db.internal:5432/appdb\n"
+        )
+        result = redact_ci_log(log)
+        self.assertIn("postgres://<credentials>@db.internal:5432/appdb", result["text"])
+        self.assertNotIn("dbuser:s3cr3tPass", result["text"])
+        self.assertEqual(result["redactions"].get("url_credentials"), 1)
+
+    def test_sendgrid_api_key_redacted_and_counted(self) -> None:
+        key = "SG.aBcDeFgHiJkLmNoPqRsT12.uVwXyZ0123456789AbCdEfGhIjKlMnOpQrStUvWx"
+        log = f"Error sending mail: rejected {key} not authorized\n"
+        result = redact_ci_log(log)
+        self.assertIn("<sendgrid-api-key>", result["text"])
+        self.assertNotIn(key, result["text"])
+        self.assertEqual(result["redactions"].get("sendgrid_api_key"), 1)
+
+    def test_telegram_bot_token_redacted_and_counted(self) -> None:
+        token = "123456789:AAH9xZ_qWeRtYuIoPaSdFgHjKlZxCvBnMqp"
+        log = f"requests.exceptions.HTTPError: bot {token} failed with 401\n"
+        result = redact_ci_log(log)
+        self.assertIn("<telegram-bot-token>", result["text"])
+        self.assertNotIn(token, result["text"])
+        self.assertEqual(result["redactions"].get("telegram_bot_token"), 1)
+
+    def test_linux_ci_runner_workspace_path_redacts_org_and_repo(self) -> None:
+        log = (
+            "/home/runner/work/acme-corp/internal-billing-service/docs/index.rst:12: "
+            "toctree contains reference to nonexisting document 'guide/missing'\n"
+        )
+        result = redact_ci_log(log)
+        self.assertIn("/home/<user>/work/<org>/<repo>/docs/index.rst", result["text"])
+        self.assertNotIn("acme-corp", result["text"])
+        self.assertNotIn("internal-billing-service", result["text"])
+        self.assertEqual(result["redactions"].get("linux_ci_runner_home_path"), 1)
+
+
+class ArtifactOrCacheFailureClassification(unittest.TestCase):
+    def test_artifact_no_files_classifies_as_artifact_or_cache_failure(self) -> None:
+        log = (
+            "Run actions/upload-artifact@v4\n"
+            "With the provided path, there will be 0 files uploaded\n"
+            "Error: No files were found with the provided path: dist/. "
+            "No artifacts will be uploaded.\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "artifact_or_cache_failure")
+        self.assertEqual(result["requirements"]["external_model_required"], False)
+        self.assertIn("artifact", result["reproduction_command"])
+
+    def test_artifact_name_collision_classifies_as_artifact_or_cache_failure(self) -> None:
+        log = (
+            "Run actions/upload-artifact@v4\n"
+            "Error: Failed to CreateArtifact: Received non-retryable error: "
+            "Failed request: (409) Conflict: an artifact with this name already exists "
+            "on the workflow run\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "artifact_or_cache_failure")
+
+    def test_cache_service_error_classifies_as_artifact_or_cache_failure(self) -> None:
+        log = (
+            "Run actions/cache@v4\n"
+            "Received 503 from cache service\n"
+            "Failed to restore: Cache service responded with 503 during download cache\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "artifact_or_cache_failure")
+        self.assertGreaterEqual(len(result["signals"]), 2)
+
+    def test_cache_failure_does_not_match_github_actions_workflow(self) -> None:
+        log = (
+            "Run actions/download-artifact@v4\n"
+            "Error: Unable to download artifact(s): Artifact not found for name: build-output\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "artifact_or_cache_failure")
+
+
+class TerraformIacFailureClassification(unittest.TestCase):
+    def test_terraform_plan_config_error_classifies_as_terraform_iac_failure(self) -> None:
+        log = (
+            "Run terraform plan -no-color\n"
+            "Initializing the backend...\n"
+            "╷\n"
+            "│ Error: Reference to undeclared resource\n"
+            "│\n"
+            '│   on main.tf line 22, in resource "aws_instance" "web":\n'
+            "│   22:   subnet_id = aws_subnet.private.id\n"
+            "│\n"
+            '│ A managed resource "aws_subnet" "private" has not been declared.\n'
+            "╵\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "terraform_iac_failure")
+        self.assertIn("terraform", result["reproduction_command"])
+        self.assertEqual(result["requirements"]["external_model_required"], False)
+
+    def test_terraform_state_lock_classifies_as_terraform_iac_failure(self) -> None:
+        log = (
+            "Run terraform apply -auto-approve\n"
+            "Acquiring state lock. This may take a few moments...\n"
+            "│ Error: Error acquiring the state lock\n"
+            "│ Lock Info:\n"
+            "│   ID:        9f3c-...\n"
+            "│   Operation: OperationTypeApply\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "terraform_iac_failure")
+
+
+class PreCommitHookClassification(unittest.TestCase):
+    def test_files_modified_by_hook_classifies_as_pre_commit(self) -> None:
+        log = (
+            "Run pre-commit run --all-files\n"
+            "trim trailing whitespace.................................................Failed\n"
+            "- hook id: trailing-whitespace\n"
+            "- exit code: 1\n"
+            "- files were modified by this hook\n"
+            "\n"
+            "Fixing src/app/main.py\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "pre_commit_hook_failure")
+        self.assertIn("pre-commit run --all-files", result["reproduction_command"])
+        self.assertEqual(result["requirements"]["external_model_required"], False)
+
+    def test_pre_commit_config_error_classifies_as_pre_commit(self) -> None:
+        log = (
+            "Run pre-commit run --all-files\n"
+            "An error has occurred: InvalidConfigError:\n"
+            "==> File .pre-commit-config.yaml\n"
+            "==> At Config()\n"
+            "=====> Additional properties are not allowed\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "pre_commit_hook_failure")
+
+
+class ShellLintClassification(unittest.TestCase):
+    def test_shellcheck_findings_classify_as_shell_lint(self) -> None:
+        log = (
+            "Run make lint-shell\n"
+            "+ shellcheck scripts/*.sh\n"
+            "\n"
+            "In scripts/entrypoint.sh line 4:\n"
+            'source "$(dirname "$0")/../lib/common.sh"\n'
+            "^-- SC1091 (info): Not following: ../lib/common.sh was not specified as input.\n"
+            "\n"
+            "For more information:\n"
+            "  https://www.shellcheck.net/wiki/SC1091 -- Not following: ../lib/common.sh...\n"
+            "make: *** [lint-shell] Error 1\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "shell_lint")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+        self.assertIn("shellcheck", result["reproduction_command"])
+
+    def test_shfmt_diff_classifies_as_shell_lint(self) -> None:
+        log = (
+            "Run shfmt -d .\n"
+            "diff scripts/build.sh.orig scripts/build.sh\n"
+            "--- scripts/build.sh.orig\n"
+            "+++ scripts/build.sh\n"
+            "@@ -1,4 +1,4 @@\n"
+            '-if [ "$1" == "prod" ]; then\n'
+            '+if [ "$1" == "prod" ]; then\n'
+            "shfmt: 1 file(s) not formatted, run 'shfmt -w .' to fix\n"
+            "shellcheck scripts/build.sh\n"
+            "In scripts/build.sh line 2:\n"
+            "cd $DIR\n"
+            "^-- SC2164 (warning): Use 'cd ... || exit' or 'cd ... || return' in case cd fails.\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "shell_lint")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+
+
+class ElixirMixFailureClassification(unittest.TestCase):
+    def test_mix_compile_error_classifies_as_elixir_mix_failure(self) -> None:
+        log = (
+            "Run mix compile --warnings-as-errors\n"
+            "==> demo\n"
+            "Compiling 14 files (.ex)\n"
+            "\n"
+            "== Compilation error in file lib/demo/worker.ex ==\n"
+            "** (CompileError) lib/demo/worker.ex:12: undefined function handle_job/1\n"
+            "    (elixir 1.17.2) expanding macro: Kernel.def/2\n"
+            "\n"
+            'could not compile dependency :demo, "mix compile" failed\n'
+            "mix format --check-formatted\n"
+            "** (Mix) mix format --check-formatted failed, 1 file is not formatted\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "elixir_mix_failure")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+        self.assertIn("mix", result["reproduction_command"])
+
+    def test_exunit_failure_classifies_as_elixir_mix_failure(self) -> None:
+        log = (
+            "Run mix test\n"
+            "Compiling 14 files (.ex)\n"
+            ".....\n"
+            "\n"
+            "  1) test totals items sums prices (DemoWeb.CartTest)\n"
+            "     test/demo_web/cart_test.exs:8\n"
+            "     Assertion with == failed\n"
+            "     code:  assert Cart.total(items) == 30\n"
+            "     left:  25\n"
+            "     right: 30\n"
+            "\n"
+            "Finished in 0.4 seconds\n"
+            "5 tests, 1 failures\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "elixir_mix_failure")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+
+    def test_hex_version_solving_failure_wins_over_python_dependency_resolution(self) -> None:
+        log = (
+            "Run mix deps.get\n"
+            "Resolving Hex dependencies...\n"
+            "Because myapp depends on ecto ~> 3.10 and myapp depends on ecto_sql ~> 3.9, "
+            "version solving failed.\n"
+            "** (Mix) Hex dependency resolution failed\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "elixir_mix_failure")
+
+    def test_python_poetry_conflict_still_classifies_as_python_dependency_resolution(self) -> None:
+        log = (
+            "Run poetry install --no-root\n"
+            "SolverProblemError\n"
+            "Because demo-service depends on api-client (^4.0) and worker-plugin depends on "
+            "api-client (<4.0), version solving failed.\n"
+            "So, because demo-project depends on both demo-service and worker-plugin, "
+            "version solving failed.\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "python_dependency_resolution")
+
+    def test_pip_metadata_generation_build_failure_is_not_dependency_resolution(self) -> None:
+        # A `pip install` build/metadata failure (modeled on a real pandas i686 CI
+        # run) is not a version-resolution conflict: its only python_dependency_resolution
+        # signal used to be the bare `python -m pip install` command line, which appears
+        # in almost every Python CI log. With no genuine resolution signal the classifier
+        # must stay honest (`unknown`) instead of claiming python_dependency_resolution
+        # and advising "pin or relax the conflicting dependency range".
+        log = (
+            "+ python -m pip install --no-cache-dir cython hypothesis\n"
+            "  error: subprocess-exited-with-error\n"
+            "  x Preparing metadata (pyproject.toml) did not run successfully.\n"
+            "  | exit code: 1\n"
+            "      Target triple not supported by rustup: i386-unknown-linux-gnu\n"
+            "      Rust not found, installing into a temporary directory\n"
+            "note: This error originates from a subprocess, and is likely not a problem with pip.\n"
+            "error: metadata-generation-failed\n"
+            "x Encountered error while generating package metadata.\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "unknown")
+
+    def test_pip_requires_different_python_marker_still_resolves(self) -> None:
+        # pip's real Requires-Python conflict wording ("requires a different Python:")
+        # must count as a genuine python_dependency_resolution signal, not lean on the
+        # `python -m pip install` command boilerplate that was removed.
+        log = (
+            "python -m pip install -r requirements.txt\n"
+            "ERROR: Package demo-reporter requires a different Python: 3.10.14 not in '>=3.11'\n"
+            "ResolutionImpossible\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "python_dependency_resolution")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+
+
+class DatabaseMigrationFailureClassification(unittest.TestCase):
+    def test_alembic_missing_revision_classifies_as_database_migration_failure(self) -> None:
+        log = (
+            "Run alembic upgrade head\n"
+            "INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.\n"
+            "INFO  [alembic.runtime.migration] Will assume transactional DDL.\n"
+            "Traceback (most recent call last):\n"
+            '  File "/usr/local/bin/alembic", line 8, in <module>\n'
+            "    sys.exit(main())\n"
+            "alembic.util.exc.CommandError: Can't locate revision identified by 'a1b2c3d4e5f6'\n"
+            "Target database is not up to date.\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "database_migration_failure")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+
+    def test_prisma_drift_classifies_as_database_migration_failure(self) -> None:
+        log = (
+            "Run prisma migrate deploy\n"
+            "Prisma schema loaded from prisma/schema.prisma\n"
+            "\n"
+            "Error: P3009\n"
+            "\n"
+            "migrate found failed migrations in the target database, new migrations will not "
+            "be applied.\n"
+            "Drift detected: Your database schema is not in sync with your migration history.\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "database_migration_failure")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+
+    def test_flyway_runtime_migration_failure_classifies_as_database_migration_failure(
+        self,
+    ) -> None:
+        log = (
+            "Run flyway migrate\n"
+            "Flyway Community Edition 10.4.1 by Redgate\n"
+            'Migrating schema "public" to version "2 - add users"\n'
+            "ERROR: Migration V2__add_users.sql failed\n"
+            "SQL State  : 42S01\n"
+            "Message    : ERROR: Table users already exists\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "database_migration_failure")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+
+    def test_incidental_successful_sql_state_is_not_a_migration_failure(self) -> None:
+        log = "psql: connected. SQL State: 00000. All migrations already applied.\n"
+        self.assertNotEqual(classify_ci_log(log)["failure_class"], "database_migration_failure")
+
+
+class KubernetesDeployFailureClassification(unittest.TestCase):
+    def test_immutable_field_classifies_as_kubernetes_deploy_failure(self) -> None:
+        log = (
+            "Run kubectl apply -f deployment.yaml\n"
+            'error: unable to recognize "deployment.yaml": no matches for kind '
+            '"Deployment" in version "apps/v1beta1"\n'
+            'The Deployment "web" is invalid: spec.selector: field is immutable\n'
+            "Error from server (Invalid): error when applying patch\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "kubernetes_deploy_failure")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+
+    def test_admission_webhook_denial_classifies_as_kubernetes_deploy_failure(self) -> None:
+        log = (
+            "Run kustomize build overlays/prod | kubectl apply -f -\n"
+            'Error from server (Forbidden): error when creating "STDIN": admission webhook '
+            "\"validate.gatekeeper.sh\" denied the request: image tag ':latest' is not allowed\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "kubernetes_deploy_failure")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+
+    def test_plain_connection_refused_stays_network_transient_failure(self) -> None:
+        log = (
+            "Run kubectl get nodes\n"
+            "The connection to the server 10.0.0.1:6443 was refused - did you specify "
+            "the right host or port?\n"
+            "Connection refused\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "network_transient_failure")
+
+
+class HelmChartFailureClassification(unittest.TestCase):
+    def test_helm_lint_schema_and_kubeversion_classifies_as_helm_chart_failure(self) -> None:
+        log = (
+            "Run helm lint . -f values.yaml\n"
+            "==> Linting .\n"
+            "[ERROR] values.yaml: Error: values don't meet the specifications of the schema\n"
+            "[ERROR] Chart.yaml: Error: chart requires kubeVersion: >= 1.25.0 which is "
+            "incompatible with Kubernetes v1.23.4\n"
+            "\n"
+            "Error: 1 chart(s) linted, 1 chart(s) failed\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "helm_chart_failure")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+        self.assertIn("helm", result["reproduction_command"])
+
+    def test_helm_upgrade_template_nil_pointer_classifies_as_helm_chart_failure(self) -> None:
+        log = (
+            "Run helm upgrade web ./chart -f values-prod.yaml\n"
+            "Error: UPGRADE FAILED: template: web/templates/deployment.yaml:14:8: "
+            'executing "web/templates/deployment.yaml" at <.Values.image.tag>: '
+            "nil pointer evaluating interface {}.Tag\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "helm_chart_failure")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+
+
+class DocsBuildFailureClassification(unittest.TestCase):
+    def test_sphinx_warning_as_error_classifies_as_docs_build_failure(self) -> None:
+        log = (
+            "Run sphinx-build -W -b html docs docs/_build/html\n"
+            "checking consistency...\n"
+            "docs/guide/advanced.rst: WARNING: document isn't included in any toctree\n"
+            "\n"
+            "Warning, treated as error:\n"
+            "docs/index.rst:12: toctree contains reference to nonexisting document "
+            "'guide/missing'\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "docs_build_failure")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+
+    def test_mkdocs_strict_broken_link_classifies_as_docs_build_failure(self) -> None:
+        log = (
+            "Run mkdocs build --strict\n"
+            "WARNING -  Doc file 'guide/configuration.md' contains a relative link "
+            "'install.md', but the target 'guide/install.md' is not found among "
+            "documentation files.\n"
+            "Aborted with 1 warnings in strict mode!\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "docs_build_failure")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+
+    def test_docusaurus_broken_link_wins_over_node_dependency_install(self) -> None:
+        # The log runs through npm; the Docusaurus signals must still win so the
+        # failure is not misread as a Node dependency problem.
+        log = (
+            "Run npm run build\n"
+            "> docs@0.0.0 build\n"
+            "> docusaurus build\n"
+            "[ERROR] Docusaurus found broken links!\n"
+            "- Broken link on source page path = /docs/intro:\n"
+            "   -> linking to /docs/getting-started/missing-page\n"
+            "Error: Unable to build website for locale en.\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "docs_build_failure")
+
+
+class SchemaContractExpansion(unittest.TestCase):
+    def test_schema_command_lists_new_failure_classes(self) -> None:
+        proc = subprocess.run(
+            [sys.executable, "-m", "patchrail", "schema", "ci-result"],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        schema = json.loads(proc.stdout)
+        enum = schema["properties"]["failure_class"]["enum"]
+        self.assertIn("node_test_failure", enum)
+        self.assertIn("node_dependency_install", enum)
+        self.assertIn("rust_lint", enum)
+        self.assertIn("go_lint", enum)
+        self.assertIn("typescript_typecheck", enum)
+        self.assertIn("release_publish_failure", enum)
+        self.assertIn("git_checkout_failure", enum)
+        self.assertIn("git_merge_conflict", enum)
+        self.assertIn("secrets_or_permissions_failure", enum)
+        self.assertIn("artifact_or_cache_failure", enum)
+        self.assertIn("pre_commit_hook_failure", enum)
+        self.assertIn("docs_build_failure", enum)
+        self.assertIn("node_script_missing", enum)
+        self.assertNotIn("node_dependency_failure", enum)
+        self.assertNotIn("lint_failure", enum)
+        self.assertNotIn("typecheck_failure", enum)
+        self.assertNotIn("publish_failure", enum)
+        self.assertNotIn("checkout_failure", enum)
+        self.assertNotIn("permissions_failure", enum)
+
+    def test_every_rule_failure_class_is_declared_in_the_schema_enum(self) -> None:
+        # Guard against drift: any class the classifier can emit must be a valid
+        # value in the published ci-result schema, or downstream consumers that
+        # validate against it will reject a legitimate classification.
+        from patchrail.ci.classify import RULES
+
+        proc = subprocess.run(
+            [sys.executable, "-m", "patchrail", "schema", "ci-result"],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        enum = set(json.loads(proc.stdout)["properties"]["failure_class"]["enum"])
+        missing = [rule["failure_class"] for rule in RULES if rule["failure_class"] not in enum]
+        self.assertEqual(missing, [], f"rule classes missing from schema enum: {missing}")
+        self.assertIn("unknown", enum)
+
+
+class RubyRspecFailureClassification(unittest.TestCase):
+    # Real RSpec failure output does not print "bundle"/"bundler" — the
+    # classifier used to fall back to `unknown` on a pasted spec-failure tail
+    # unless bundler setup boilerplate happened to be included. Regression for
+    # the rubocop dogfood (run 28923797241) that surfaced the gap.
+    def test_standard_rspec_summary_classifies_without_bundler_boilerplate(self) -> None:
+        log = (
+            "Failures:\n"
+            "  1) WidgetPresenter renders title\n"
+            '     Failure/Error: expect(rendered).to include("Dashboard")\n'
+            "5 examples, 1 failure\n"
+            "\n"
+            "Failed examples:\n"
+            "rspec ./spec/widget_presenter_spec.rb:12 # WidgetPresenter renders title\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "ruby_bundle_failure")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+
+    def test_parallel_rspec_summary_pending_before_failures_classifies(self) -> None:
+        # turbo_tests / parallel_tests print `N examples, K pending, M failures`
+        # (pending before failures), which the old `rspec .*failures?` pattern
+        # never matched. Shape taken from the real rubocop run.
+        log = (
+            "[ 2]                        20381 examples, 2 pending, 4 failures       "
+            "441 suites in 143.0840s      (pid 2323 exit 1 )\n"
+            "\n"
+            "==> Failed Examples\n"
+            "\n"
+            "rspec ./spec/rubocop/cop/style/format_string_token_spec.rb[1:44:4:2] "
+            "# RuboCop::Cop::Style::FormatStringToken does not register an offense\n"
+            "##[error]Process completed with exit code 4.\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "ruby_bundle_failure")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+
+
+class NetworkTransientPrecedence(unittest.TestCase):
+    def test_go_test_failure_with_network_noise_is_not_transient(self) -> None:
+        # A deterministic Go test failure whose log happens to contain
+        # network-shaped strings (dial tcp / connection refused / context
+        # deadline exceeded) must classify as the real cause, not as a
+        # transient outage the maintainer would be told to just retry.
+        log = (
+            "+ go test -race ./...\n"
+            "=== RUN   TestGatewayForwardsRequest\n"
+            '    gateway_test.go:61: Get "http://127.0.0.1:39218/healthz": '
+            "dial tcp 127.0.0.1:39218: connect: connection refused\n"
+            "    gateway_test.go:73: waiting for readiness: context deadline exceeded\n"
+            "--- FAIL: TestGatewayForwardsRequest (5.02s)\n"
+            "--- FAIL: TestRetryBudgetExhausted (0.00s)\n"
+            "FAIL\tgithub.com/acme/gateway/internal/proxy\t5.041s\n"
+            "FAIL\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "go_test_failure")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+
+    def test_genuine_dns_outage_stays_network_transient_failure(self) -> None:
+        # A terminal transience signal (DNS resolution) still wins even though
+        # the guard defers away from ambiguous-only network matches.
+        log = (
+            "$ npm install --registry https://registry.example.com\n"
+            "npm ERR! Could not resolve host: registry.example.com\n"
+            "npm ERR! Temporary failure in name resolution\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "network_transient_failure")
+
+    def test_ambiguous_only_network_with_no_other_rule_stays_network(self) -> None:
+        # When nothing but the ambiguous network signal matched, there is no
+        # concrete cause to defer to, so the transient classification stands.
+        log = (
+            "Run kubectl get nodes\n"
+            "The connection to the server 10.0.0.1:6443 was refused - did you "
+            "specify the right host or port?\n"
+            "Connection refused\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "network_transient_failure")
+
+
+class SbtScalaBuildClassification(unittest.TestCase):
+    """Real sbt (Scala on the JVM) failures must not fall through to ``unknown``.
+
+    Regression for a real ``scalatest/scalatest`` run (GitHub Actions run
+    28707855835, job ``test-scala-js (25)``): sbt prints none of the
+    Maven/Gradle banners the ``java_build_failure`` rule keyed on, so a genuine
+    ``(project / Test / compileIncremental) Compilation failed`` was classified
+    ``unknown`` at 0.15 confidence before this rule was extended to sbt.
+    """
+
+    def test_sbt_compile_failure_is_java_build_failure(self) -> None:
+        log = (
+            "sbt inventoryService/test\n"
+            "[info] welcome to sbt 1.11.7 (Eclipse Adoptium Java 21.0.4)\n"
+            "[info] compiling 14 Scala sources ...\n"
+            "[error] StockLedger.scala:48:32: not found: value reservedUnits\n"
+            "[error] one error found\n"
+            "[error] (inventoryService / Compile / compileIncremental) "
+            "Compilation failed\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "java_build_failure")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+        self.assertIn("sbt test", result["reproduction_command"])
+
+    def test_sbt_test_failure_is_java_build_failure(self) -> None:
+        log = (
+            "[info] welcome to sbt 1.11.7\n"
+            "[error] Failed tests:\n"
+            "[error] \tcom.example.StockLedgerSpec\n"
+            "[error] (Test / test) sbt.TestsFailedException: Tests unsuccessful\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "java_build_failure")
+
+
+class KotlinAndroidBuildClassification(unittest.TestCase):
+    """Kotlin/Android Gradle compile failures must not fall through to ``unknown``.
+
+    A maintainer pasting only the interesting excerpt of a Kotlin/Android CI
+    failure often keeps the kotlinc diagnostics (``e: File.kt: (line, col):
+    Unresolved reference: ...``) but trims the Gradle ``Execution failed for
+    task`` / ``BUILD FAILED`` banner that appears further down the log. Before
+    kotlinc's own markers were added to ``java_build_failure``, that trimmed
+    excerpt classified ``unknown`` at 0.15 confidence.
+    """
+
+    def test_kotlin_compile_excerpt_without_gradle_banner_is_java_build_failure(
+        self,
+    ) -> None:
+        log = (
+            "e: app/src/main/kotlin/com/example/inventory/StockViewModel.kt: "
+            "(58, 21): Unresolved reference: reservedUnits\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "java_build_failure")
+
+    def test_kotlin_gradle_task_failure_is_java_build_failure(self) -> None:
+        log = (
+            "> Task :app:compileDebugKotlin FAILED\n"
+            "e: app/src/main/kotlin/com/example/inventory/StockViewModel.kt: "
+            "(58, 21): Unresolved reference: reservedUnits\n\n"
+            "FAILURE: Build failed with an exception.\n\n"
+            "* What went wrong:\n"
+            "Execution failed for task ':app:compileDebugKotlin'.\n"
+            "> A failure occurred while executing "
+            "org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers"
+            "$GradleKotlinCompilerWorkAction\n"
+            "   > Compilation error. See log for more details\n\n"
+            "BUILD FAILED in 12s\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "java_build_failure")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+
+
+def _gh_prefixed(log: str, *, bom: bool = True) -> str:
+    """Wrap each line the way ``gh run view --log-failed`` does.
+
+    gh emits ``<job>\\t<step>\\t<ISO-8601 timestamp> <line>`` and a UTF-8 BOM on the
+    very first line. This is exactly what a maintainer pipes in with
+    ``gh run view <id> --log-failed | patchrail ci explain``.
+    """
+    lines = log.splitlines()
+    out = []
+    for index, line in enumerate(lines):
+        stamp = f"2026-07-09T17:02:{index % 60:02d}.1234567Z"
+        prefix = "﻿" if (bom and index == 0) else ""
+        out.append(f"{prefix}test (3.12)\tRun tests\t{stamp} {line}")
+    return "\n".join(out) + "\n"
+
+
+def _raw_actions_prefixed(log: str) -> str:
+    """Wrap each line the way a raw Actions log download does: ``<timestamp> <line>``."""
+    lines = log.splitlines()
+    out = []
+    for index, line in enumerate(lines):
+        stamp = f"2026-07-09T17:02:{index % 60:02d}.1234567Z"
+        out.append(f"{stamp} {line}")
+    return "\n".join(out) + "\n"
+
+
+class GitHubActionsLogPrefixNormalization(unittest.TestCase):
+    """`gh run view --log-failed | patchrail ci explain` must match a saved raw log.
+
+    Regression guard: the ``gh``/Actions per-line prefix (job/step columns + ISO-8601
+    timestamp, plus a leading BOM) used to shift real content off the start of the
+    line, silently defeating line-anchored (``^``) patterns and lowering confidence —
+    a worse result for the single most common maintainer gesture (piping a failing
+    run straight in). classify_ci_log strips the prefix up front; these cases pin
+    gh-prefixed == raw.
+    """
+
+    # Sparse logs where a line-anchored pattern is decisive: these regressed
+    # (0.95 -> 0.89) before the prefix strip landed.
+    SPARSE_GO_LINT = (
+        "Running golangci-lint\n"
+        "internal/server/handler.go:42:6: exported function NewHandler should have "
+        "comment or be unexported (revive)\n"
+        "pkg/util/strings.go:17:2: ineffectual assignment to err (ineffassign)\n"
+    )
+    SPARSE_JEST = "$ npm test\nFAIL src/components/Button.test.tsx\n  ● Button > renders label\n"
+    PYTEST = (
+        "=================================== FAILURES "
+        "===================================\n"
+        '>       self.assertEqual(payload["total_cases"], 210)\n'
+        "E       AssertionError: 219 != 210\n"
+        "tests/test_ci_cli.py:1322: AssertionError\n"
+        "FAILED tests/test_ci_cli.py::Bench::test_totals - AssertionError: 219 != 210\n"
+    )
+
+    def _assert_prefix_invariant(self, log: str, expected_class: str) -> None:
+        raw = classify_ci_log(log)
+        self.assertEqual(raw["failure_class"], expected_class)
+        for label, wrapped in (
+            ("gh", _gh_prefixed(log)),
+            ("gh-no-bom", _gh_prefixed(log, bom=False)),
+            ("raw-actions", _raw_actions_prefixed(log)),
+        ):
+            got = classify_ci_log(wrapped)
+            self.assertEqual(
+                got["failure_class"],
+                raw["failure_class"],
+                f"{label} prefix changed the class",
+            )
+            self.assertEqual(
+                got["confidence"],
+                raw["confidence"],
+                f"{label} prefix degraded confidence",
+            )
+
+    def test_go_lint_is_prefix_invariant(self) -> None:
+        self._assert_prefix_invariant(self.SPARSE_GO_LINT, "go_lint")
+
+    def test_node_test_failure_is_prefix_invariant(self) -> None:
+        self._assert_prefix_invariant(self.SPARSE_JEST, "node_test_failure")
+
+    def test_python_test_failure_is_prefix_invariant(self) -> None:
+        self._assert_prefix_invariant(self.PYTEST, "python_test_failure")
+
+    def test_plain_content_starting_with_a_timestamp_is_untouched(self) -> None:
+        # A real log line that itself begins with a bare timestamp must keep its
+        # content after normalization (only the encoding prefix is stripped).
+        log = (
+            "internal/server/handler.go:42:6: exported function NewHandler should "
+            "have comment or be unexported (revive)\n"
+        )
+        stripped = classify_ci_log(_raw_actions_prefixed(log))
+        self.assertEqual(stripped["failure_class"], "go_lint")
+
+    def test_every_fixture_in_the_zoo_is_prefix_invariant(self) -> None:
+        # The three cases above cover go_lint / node_test / python_test by hand. This
+        # is the data-driven guard for the whole fixture zoo: every saved log must
+        # classify identically -- same class AND same confidence -- whether it is read
+        # raw or piped through `gh run view --log-failed` (job/step columns + ISO-8601
+        # timestamp, BOM on the first line) or a raw Actions download (bare timestamp).
+        # A new rule or fixture that quietly leans on `^`-anchored content would regress
+        # the documented `gh run view --log-failed | patchrail ci explain` one-liner
+        # without ever tripping the hand-written cases; globbing the zoo keeps the guard
+        # in step with the fixtures as they grow.
+        fixtures = sorted(
+            (Path(__file__).resolve().parents[1] / "examples" / "ci-triage").glob("*.log")
+        )
+        self.assertGreater(len(fixtures), 100, "CI fixture zoo not found")
+        for fixture in fixtures:
+            log = fixture.read_text(encoding="utf-8", errors="replace")
+            raw = classify_ci_log(log)
+            for label, wrapped in (
+                ("gh", _gh_prefixed(log)),
+                ("gh-no-bom", _gh_prefixed(log, bom=False)),
+                ("raw-actions", _raw_actions_prefixed(log)),
+            ):
+                with self.subTest(fixture=fixture.name, prefix=label):
+                    got = classify_ci_log(wrapped)
+                    self.assertEqual(
+                        got["failure_class"],
+                        raw["failure_class"],
+                        f"{label} prefix changed the class for {fixture.name}",
+                    )
+                    self.assertEqual(
+                        got["confidence"],
+                        raw["confidence"],
+                        f"{label} prefix degraded confidence for {fixture.name}",
+                    )
+
+
+# The `flags :` line of /proc/cpuinfo, which perf-sensitive projects dump into the
+# log preamble, advertises the x86 time stamp counter as `tsc` -- the same token as
+# the TypeScript compiler. Matching it is enough to outscore the real cause.
+_CPUINFO_PREAMBLE = (
+    "Current runner version: '2.335.1'\n"
+    "##[group]Runner Image\n"
+    "Image: ubuntu-24.04\n"
+    "processor\t: 0\n"
+    "model name\t: AMD EPYC 7763 64-Core Processor\n"
+    "flags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat\n"
+    "##[endgroup]\n"
+)
+
+
+class CpuFlagsAreNotATypeScriptCompiler(unittest.TestCase):
+    def test_rust_compile_error_survives_a_real_runner_preamble(self) -> None:
+        # Shaped after a real failing rust-lang/rust run. It scored as
+        # typescript_typecheck: the CPU flag was the only signal that rule had, and
+        # a one-signal tie is settled by declaration order. The job also builds its
+        # container and mentions clippy, so `docker buildx build` and `clippy` tie
+        # at one signal too -- none of the three is evidence of anything, and the
+        # rule that matched the actual rustc error has to win.
+        log = _CPUINFO_PREAMBLE + (
+            "+ docker buildx build --rm -t rust-ci -f src/ci/docker/Dockerfile .\n"
+            "##[group]Building rustc with clippy enabled\n"
+            "error[E0277]: the trait bound `Binder<TyCtxt<'_>, "
+            "&RawList<(), GenericArg<'tcx>>>: SliceLike` is not satisfied\n"
+            "   --> compiler/rustc_middle/src/ty/sty.rs:812:9\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "rust_test_failure")
+        self.assertIn(r"error\[E\d{4}\]", result["signals"])
+
+    def test_container_build_that_merely_ran_does_not_mask_the_real_cause(self) -> None:
+        # `docker build` as a setup step is not a docker failure.
+        log = (
+            "Run docker build -t app .\n"
+            "Successfully built 0e1f2a3b4c5d\n"
+            "Run pytest\n"
+            "E   assert 4 == 5\n"
+            "FAILED tests/test_math.py::test_add - assert 4 == 5\n"
+            "=== 1 failed, 12 passed in 1.20s ===\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "python_test_failure")
+
+    def test_a_genuine_docker_failure_still_wins_at_full_confidence(self) -> None:
+        # The invocation is corroboration, not noise, when a real docker error is
+        # present: it must keep counting toward confidence.
+        log = (
+            "Run docker compose up -d\n"
+            "Container api-1  Error\n"
+            "dependency failed to start: service api-1 is unhealthy\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "docker_build_failure")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+
+    def test_cpuinfo_preamble_alone_classifies_as_unknown(self) -> None:
+        # No failure of any kind in the log: the honest answer is `unknown`, not a
+        # confident guess drawn from boilerplate every hosted runner prints.
+        result = classify_ci_log(_CPUINFO_PREAMBLE)
+        self.assertEqual(result["failure_class"], "unknown")
+
+    def test_typescript_compiler_still_matches_in_command_position(self) -> None:
+        for invocation in (
+            "pnpm tsc --noEmit",
+            "> tsc --noEmit",
+            "+ npx tsc --noEmit",
+            "+ vue-tsc --noEmit -p tsconfig.json",
+            "tsc -p tsconfig.json",
+            "tsc exited with code 2",
+            "tsc failed",
+        ):
+            with self.subTest(invocation=invocation):
+                log = f"Run typecheck\n{invocation}\nsrc/app.ts(4,3): error TS2322\n"
+                result = classify_ci_log(log)
+                self.assertEqual(result["failure_class"], "typescript_typecheck")
+
+
+# Shaped after the real failing apache/airflow run 29314707915 ("Tests (AMD)"), which
+# runs pytest with `--color=yes`. Two things about it defeated the classifier at once:
+# the colour codes arrive from the GitHub log API with the ESC byte literalised as `^[`,
+# and the `if: failure()` cleanup step uploads container logs that do not exist.
+_AIRFLOW_COLOURED_TEST_FAILURE = (
+    "Run breeze testing providers-tests\n"
+    "^[[94mdocker compose --project-name breeze run -T --rm airflow providers/edge3/tests"
+    " --^[[0m^[[94mcolor^[[0m^[[94m=^[[0m^[[94myes^[[0m\n"
+    "plugins: asyncio-1.4.0, mock-3.15.1, xdist-3.8.0, rerunfailures-16.4\n"
+    "^[[31m========================= FAILURES =========================^[[0m\n"
+    "    ^[[0m^[[94massert^[[39;49;00m worker.maintenance_mode ^[[95mis^[[39;49;00m expected\n"
+    "^[[1m^[[31mE   assert True is False^[[0m\n"
+    "^[[31mFAILED^[[0m providers/edge3/tests/unit/edge3/cli/test_worker.py::"
+    "^[[1mTestEdgeWorker::test_adjust_maintenance_mode_based_on_sysinfo_exit^[[0m"
+    " - assert True is False\n"
+    "^[[31m===== ^[[31m^[[1m1 failed^[[0m, ^[[32m322 passed^[[0m, ^[[33m5 skipped^[[0m"
+    " in 15.81s^[[0m^[[31m =====^[[0m\n"
+    "Dumping logs on error\n"
+    "^[[31mTest failed with ^[[0m^[[1;31m1^[[0m^[[31m.^[[0m\n"
+    "Run ./.github/actions/post_tests_failure\n"
+    "Run actions/upload-artifact@v4\n"
+    "No files were found with the provided path: ./files/container_logs*."
+    " No artifacts will be uploaded.\n"
+    "##[error]Process completed with exit code 1.\n"
+)
+
+
+class ColourCodesDoNotHideTheFailure(unittest.TestCase):
+    def test_coloured_pytest_failure_from_the_github_log_api(self) -> None:
+        # The exact one-liner a maintainer runs:
+        #   gh run view <id> --log-failed | patchrail ci explain
+        # Before the fix this returned `artifact_or_cache_failure`: every coloured token
+        # was unmatchable, so the only signal `python_test_failure` could still see was
+        # the bare `pytest` invocation.
+        result = classify_ci_log(_gh_prefixed(_AIRFLOW_COLOURED_TEST_FAILURE))
+        self.assertEqual(result["failure_class"], "python_test_failure")
+        self.assertIn("FAILED .*::", result["signals"])
+        self.assertEqual(result["reproduction_command"], "python -m pytest -q")
+
+    def test_real_esc_byte_is_stripped_too(self) -> None:
+        # A log saved straight from a terminal keeps the actual ESC (0x1b) byte.
+        log = (
+            "Run pytest\n"
+            "\x1b[31mFAILED\x1b[0m tests/test_math.py::test_add - assert 4 == 5\n"
+            "\x1b[31m===== \x1b[1m1 failed\x1b[0m, \x1b[32m12 passed\x1b[0m =====\x1b[0m\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "python_test_failure")
+        self.assertIn("FAILED .*::", result["signals"])
+
+    def test_colour_classifies_identically_to_the_uncoloured_log(self) -> None:
+        plain = (
+            "Run pytest\n"
+            "FAILED tests/test_math.py::test_add - assert 4 == 5\n"
+            "===== 1 failed, 12 passed =====\n"
+        )
+        coloured = (
+            "Run pytest\n"
+            "^[[31mFAILED^[[0m tests/test_math.py::test_add - assert 4 == 5\n"
+            "^[[31m===== ^[[1m1 failed^[[0m, ^[[32m12 passed^[[0m =====^[[0m\n"
+        )
+        self.assertEqual(classify_ci_log(coloured), classify_ci_log(plain))
+
+    def test_bracketed_error_codes_survive_the_strip(self) -> None:
+        # The strip is anchored to the ESC/`^[` introducer: `error[E0277]`, `[ERROR]` and
+        # ordinary indexing must pass through untouched, or it would break every rule
+        # that matches a bracketed code.
+        log = (
+            "error[E0277]: the trait bound `Binder<TyCtxt<'_>>: SliceLike` is not satisfied\n"
+            "   --> compiler/rustc_middle/src/ty/sty.rs:812:9\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "rust_test_failure")
+        self.assertIn(r"error\[E\d{4}\]", result["signals"])
+
+
+class PostFailureArtifactNoiseIsNotTheCause(unittest.TestCase):
+    def test_upload_artifact_warning_does_not_mask_the_failing_test(self) -> None:
+        # The commonest shape in CI: a test fails, and the `if: failure()` step that
+        # uploads logs/screenshots for diagnosis finds nothing to upload and warns. The
+        # cleanup running after the failure is not the cause of it.
+        #
+        # The suite is driven through `make test`, so the word "pytest" never appears and
+        # the real cause is carried by a single signal -- while the cleanup noise carries
+        # two. This is where the deferral actually decides: on raw score the artifact rule
+        # wins 2-1.
+        log = (
+            "Run make test\n"
+            "FAILED tests/test_worker.py::test_maintenance - assert True is False\n"
+            "Run actions/upload-artifact@v4\n"
+            "No files were found with the provided path: ./files/container_logs*."
+            " No artifacts will be uploaded.\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "python_test_failure")
+
+    def test_a_genuine_artifact_failure_still_wins(self) -> None:
+        # A real artifact failure trips a terminal signal, which is not in the deferral
+        # sets -- it must still win, at full confidence.
+        log = (
+            "Run actions/upload-artifact@v4\n"
+            "Failed to CreateArtifact: Received non-retryable error: Conflict:"
+            " an artifact with this name already exists\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "artifact_or_cache_failure")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+
+    def test_artifact_warning_alone_still_classifies_as_artifact(self) -> None:
+        # When the warning is all the log gave us, it stands: there is nothing to defer
+        # to, and `unknown` would be less useful than the one lead available.
+        log = (
+            "Run actions/upload-artifact@v4\n"
+            "No files were found with the provided path: dist/*.whl."
+            " No artifacts will be uploaded.\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "artifact_or_cache_failure")
+
+
+class ToolsNamedButNotFailedTests(unittest.TestCase):
+    """A tool named on a `set -x` echo, a step header or a pip install line never failed.
+
+    Found by running `ci explain` over real failing runs from public repos: encode/httpx,
+    prefecthq/prefect and home-assistant/core were all decided by the job's cast list
+    rather than its cause of death.
+    """
+
+    def test_set_x_echo_of_a_linter_that_passed_does_not_beat_the_failing_tests(
+        self,
+    ) -> None:
+        # encode/httpx, verbatim in shape: `scripts/check` runs under `set -x`, so the
+        # linter that PASSED is echoed into the log, and ruff's non-fatal warning about a
+        # malformed noqa directive quotes a rule code. Those two scored `python_lint`
+        # (0.71) over the pytest run that actually failed.
+        log = (
+            "+ ruff check httpx tests\n"
+            "warning: Invalid `# noqa` directive on httpx/_transports/asgi.py:171:"
+            " expected a comma-separated list of codes (e.g. `F401, F841`).\n"
+            "+ pytest\n"
+            "=========================== short test summary info ============================\n"
+            "================== 1 failed, 1416 passed, 1 skipped in 18.37s ==================\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "python_test_failure")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+
+    def test_a_tool_named_only_by_pip_installing_it_does_not_win(self) -> None:
+        # prefecthq/prefect: pip announces every dev dependency it resolves, so `mypy`
+        # is in the log of a job that never type-checked anything. It took the
+        # classification (`python_type_check`) off the pytest collection error.
+        log = (
+            "Collecting mypy==1.17.1 (from -r requirements.txt (line 23))\n"
+            "  Downloading mypy-1.17.1-cp312-manylinux_2_17_x86_64.whl.metadata (2.2 kB)\n"
+            "E   ValueError: No Prefect API URL provided.\n"
+            "=========================== short test summary info ============================\n"
+            "ERROR tests/test_listener.py - ValueError: No Prefect API URL provided.\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "python_test_failure")
+
+    def test_pytest_reporting_only_a_count_is_a_test_failure(self) -> None:
+        # A run that reports the count and not the names (`-q`, or a plugin that rewrites
+        # the summary) used to leave the rule carried by its bare `pytest` invocation.
+        log = "==================== 3 failed, 120 passed in 4.10s ====================\n"
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "python_test_failure")
+
+    def test_an_invocation_still_corroborates_a_real_failure(self) -> None:
+        # The guard must not cost an honest failure its confidence: the echoed command
+        # sits next to a real error here, and both signals count. Judging the pattern
+        # instead of the line it landed on dropped this from 0.95 to 0.71.
+        log = (
+            "Run dotnet build --configuration Release\n"
+            "Program.cs(42,17): error CS1002: ; expected"
+            " [/home/runner/work/app/app/App.csproj]\n"
+            "Build FAILED.\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "dotnet_build_failure")
+        self.assertGreaterEqual(result["confidence"], 0.85)
+
+    def test_a_rule_with_nowhere_to_defer_still_stands(self) -> None:
+        # If the echo is genuinely all there is, keep the lead rather than dropping to
+        # `unknown`: the log offered nothing better.
+        log = "+ cargo clippy -- -D warnings\n"
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "rust_lint")
+
+
+class ToolNamedButNeverRun(unittest.TestCase):
+    """A tool the runner merely installed, exported or probed for cannot be the cause.
+
+    Every case here is a real log from a public repo, taken with the documented one-liner
+    (`gh run view --log-failed | patchrail ci explain`).
+    """
+
+    def test_linux_runner_env_dump_is_not_a_gradle_build(self) -> None:
+        # apache/kafka: the failing job was `check-pr-labels`. The ONLY line in the whole
+        # log to say "gradle" was the hosted image exporting GRADLE_HOME -- and we called
+        # it a Java build.
+        log = "GRADLE_HOME=/usr/share/gradle-9.6.1\n##[error]Process completed with exit code 1.\n"
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "unknown")
+
+    def test_windows_runner_env_dump_is_not_a_gradle_build(self) -> None:
+        # moby/moby: a Go project. The Windows image ships Gradle and Maven, and prints
+        # them in the padded `NAME    value` env table that every windows job dumps.
+        log = (
+            "GRADLE_HOME                    C:\\ProgramData\\chocolatey\\lib\\gradle\n"
+            "M2                             C:\\ProgramData\\chocolatey\\lib\\maven\\bin\n"
+            "MAVEN_OPTS                     -Xms256m\n"
+            "##[error]Process completed with exit code 1.\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "unknown")
+
+    def test_cmake_probing_for_a_linter_is_not_a_lint_failure(self) -> None:
+        # opencv/opencv: C++, killed by a CodeQL `commit not found`. CMake announces the
+        # optional tools it found and prints `- Failed` for probes that are SUPPOSED to
+        # fail; that was a 0.71-confidence `python_lint`.
+        log = (
+            "-- Performing Test HAVE_C_WSIGN_PROMO - Failed\n"
+            '-- Found Pylint: /usr/bin/pylint (found version "3.0.3")\n'
+            "-- Could NOT find Flake8 (missing: FLAKE8_EXECUTABLE)\n"
+            "-- Registered 'check_pylint' target: using /usr/bin/pylint\n"
+            "##[error]commit not found - https://docs.github.com/rest\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "unknown")
+
+    def test_the_runner_preloading_an_action_is_not_an_artifact_failure(self) -> None:
+        # Every job that so much as declares upload-artifact prints this line at startup,
+        # long before the action does anything.
+        log = (
+            "Download action repository 'actions/upload-artifact@043fb46d1a93c77aae'\n"
+            "##[error]Process completed with exit code 1.\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "unknown")
+
+    def test_a_tool_quoted_in_a_json_config_blob_is_not_a_test_failure(self) -> None:
+        # opencv again, after the CMake noise was handled: CodeQL dumps its config schema,
+        # and `go test` appears inside an English sentence in a JSON string.
+        log = (
+            '    "title" : "Whether to include Go test files in the CodeQL database.",\n'
+            "##[error]commit not found - https://docs.github.com/rest\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "unknown")
+
+    def test_a_real_gradle_failure_still_wins_beside_the_env_dump(self) -> None:
+        # The other direction, and the one that matters: GRADLE_HOME is exported in EVERY
+        # JVM job, including the ones that really do fail. Discounting the export must not
+        # cost a genuine Gradle build its verdict -- it fails off that line too, and here
+        # it does so twice.
+        log = (
+            "GRADLE_HOME=/usr/share/gradle-9.6.1\n"
+            "> Task :compileJava FAILED\n"
+            "FAILURE: Build failed with an exception.\n"
+            "* What went wrong:\n"
+            "Execution failed for task ':compileJava'.\n"
+            "BUILD FAILED in 1m 4s\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "java_build_failure")
+
+    def test_a_real_pylint_failure_still_wins_beside_the_cmake_probe(self) -> None:
+        log = (
+            '-- Found Pylint: /usr/bin/pylint (found version "3.0.3")\n'
+            "src/app.py:12:0: C0114: Missing module docstring (missing-module-docstring)\n"
+            "pylint exited with 16\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "python_lint")
+
+    def test_the_env_dump_guard_does_not_swallow_a_pytest_assertion(self) -> None:
+        # pytest indents its failure body under a bare `E`, which is one uppercase word
+        # followed by whitespace -- the exact shape of an env-table row. Requiring two
+        # characters is what keeps `E   AssertionError` readable as evidence.
+        log = (
+            "    def test_totals():\n"
+            ">       assert total == 2\n"
+            "E       AssertionError: assert 1 == 2\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "python_test_failure")
+
+
+class ANameInAPathIsAFilenameNotAFailure(unittest.TestCase):
+    """A tool named inside a path, a config key or a bare noun has not failed.
+
+    Every case here is a real log from a public repo, taken with the documented one-liner
+    (`gh run view --log-failed | patchrail ci explain`). A monorepo's log is mostly
+    filenames, and each of these filenames was, on its own, a confident verdict.
+    """
+
+    def test_formatter_listing_files_it_left_unchanged_is_not_a_lockfile_failure(self) -> None:
+        # oven-sh/bun: prettier printed every file it checked and left UNCHANGED. Two of them
+        # live under a directory called `lockfile/`. That was the whole case for telling a
+        # Zig/JS runtime its pnpm lockfile was out of date -- repro: `corepack pnpm install`.
+        log = (
+            "[prettier] packages/bun-vscode/src/features/lockfile/index.ts 12ms (unchanged)\n"
+            "[prettier] packages/bun-vscode/src/features/lockfile/lockfile.style.ts 5ms (unchanged)\n"
+            "[prettier] test/cli/install/lockfile-only.test.ts 3ms (unchanged)\n"
+            "##[error]Process completed with exit code 1.\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "unknown")
+
+    def test_a_test_file_named_after_an_advisory_is_not_a_security_scan(self) -> None:
+        # oven-sh/bun again: a regression test is NAMED after the advisory it covers. No scan
+        # ran, no vulnerability was reported -- the GHSA id sat in a filename, and that alone
+        # was a 0.53 `security_scan_failure`.
+        log = (
+            "Run bun test\n"
+            "test/cli/install/GHSA-pfwx-36v6-832x.test.ts\n"
+            "##[error]Process completed with exit code 1.\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "unknown")
+
+    def test_dependabot_echoing_its_config_is_not_a_gradle_build(self) -> None:
+        # istio/istio -- a Go repo. Dependabot echoes its whole job definition as ONE 2929-char
+        # JSON line, so the existing pretty-printed-JSON guard (a `"key":` at line start) never
+        # saw it. `gradle-lockfile-updater` made it a Java build; `lockfile-only` made it a
+        # Node install. The updater dying is the only thing that actually happened.
+        log = (
+            "updater | 2026/07/13 14:55:14 INFO <job_145> Job definition: "
+            '{"job":{"package-manager":"go_modules","experiments":{"gradle-lockfile-updater":true},'
+            '"lockfile-only":false,"vendor-dependencies":false}}\n'
+            "##[error]Dependabot encountered an error performing the update\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "unknown")
+        # ...and the honest answer still hands back the line the runner itself reported.
+        self.assertIn(
+            "Dependabot encountered an error performing the update",
+            " ".join(result["runner_errors"]),
+        )
+
+    def test_the_flag_that_permits_a_lockfile_change_is_not_a_lockfile_failure(self) -> None:
+        # withastro/astro: `--no-frozen-lockfile` EXPLICITLY allows the lockfile to change,
+        # and pnpm's "Issues with peer dependencies found" is a warning it prints while
+        # installing perfectly well.
+        log = (
+            "Run pnpm install --no-frozen-lockfile\n"
+            'Issues with peer dependencies found. Run "pnpm peers check"\n'
+            "##[error]Process completed with exit code 1.\n"
+        )
+        self.assertNotEqual(classify_ci_log(log)["failure_class"], "node_dependency_install")
+
+    def test_an_error_that_cites_a_path_still_witnesses_the_failure(self) -> None:
+        # The guard on the guard: discounting a name inside a path must not deafen us to a
+        # real error that happens to cite one -- and CI errors cite paths constantly. The
+        # match STARTS at `error[E0277]`, outside the path token, so it still counts.
+        log = (
+            "error[E0277]: the trait bound `u32: From<String>` is not satisfied\n"
+            " --> src/main.rs:12:5\n"
+            "##[error]Process completed with exit code 101.\n"
+        )
+        result = classify_ci_log(log)
+        self.assertNotEqual(result["failure_class"], "unknown")
+        self.assertTrue(result["failure_class"].startswith("rust_"))
+
+    def test_a_frozen_lockfile_that_really_broke_still_classifies(self) -> None:
+        # The other direction, and the one that pays for the rule: yarn's and bun's lockfile
+        # failures are not `npm ERR!` or `ERR_PNPM`, so once the bare noun stops carrying a
+        # verdict they need a message of their own.
+        for manager, log in {
+            "yarn v1": "error Your lockfile needs to be updated, but yarn was run with --frozen-lockfile.\n",
+            "yarn berry": "Usage Error: The lockfile would have been modified by this install, which is explicitly forbidden.\n",
+            "bun": "error: lockfile had changes, but lockfile is frozen\n",
+        }.items():
+            with self.subTest(manager=manager):
+                self.assertEqual(classify_ci_log(log)["failure_class"], "node_dependency_install")
+
+    def test_the_noun_still_corroborates_a_real_npm_failure(self) -> None:
+        # A mention is not worthless. Next to a real error it is honest corroboration, and it
+        # must keep holding the confidence up -- which is why the noun stays in the rule
+        # instead of being deleted from it.
+        error_only = "npm ERR! code EUSAGE\n"
+        with_the_noun = error_only + "npm ERR! Update your lockfile with `npm install`.\n"
+
+        corroborated = classify_ci_log(with_the_noun)
+        self.assertEqual(corroborated["failure_class"], "node_dependency_install")
+        self.assertGreater(corroborated["confidence"], classify_ci_log(error_only)["confidence"])
+
+
+class AStepsSourceIsNotItsOutput(unittest.TestCase):
+    """The runner echoes a `run:` step's source before executing it. That is program text.
+
+    GitHub Actions prints every line of a step's script in cyan-bold before running it, so a
+    log carries the step's error-handling branches whether or not they were ever taken. Seven
+    of ten real failing logs sampled (ruff, airflow, pydantic, tokio, vite, prometheus, httpx)
+    echo a step body, and those bodies say `pnpm run lint`, `bail() {`, `exit 1`.
+    """
+
+    def test_an_error_branch_that_never_ran_is_not_a_pytest_failure(self) -> None:
+        # astral-sh/ruff: a Rust repo, whose benchmark job died on a panic (`exit code: 101`).
+        # The step's installer script carries an error branch for a download that SUCCEEDED --
+        # and `FAILED .*::`, matched case-insensitively, read pytest's short-summary line off
+        # `Failed to install CodSpeed CLI::`. A Rust panic came out `python_test_failure`.
+        log = (
+            '^[[36;1m  if ! HTTP_CODE=$(curl -sSL -o "$INSTALLER_TMP" "$INSTALLER_URL"); then^[[0m\n'
+            '^[[36;1m    echo "::error title=Failed to install CodSpeed CLI::Installation of '
+            'CodSpeed CLI with version $RUNNER_VERSION failed."^[[0m\n'
+            "^[[36;1m    exit 1^[[0m\n"
+            "thread 'main' (2574) panicked at crates/ruff_benchmark/benches/ty_walltime.rs:238:13:\n"
+            "Expected between 1 and 3 diagnostics on project 'altair' but got 4\n"
+            "failed to execute the benchmark process, exit code: 101\n"
+            "##[error]Process completed with exit code 1.\n"
+        )
+        result = classify_ci_log(log)
+        self.assertNotEqual(result["failure_class"], "python_test_failure")
+        self.assertEqual(result["failure_class"], "rust_test_failure")
+
+    def test_the_api_serving_a_real_escape_byte_is_handled_too(self) -> None:
+        # The same log, with the ESC written as the byte itself rather than the two literal
+        # characters `^` `[`. Both encodings reach `patchrail ci explain` in the wild.
+        log = (
+            '\x1b[36;1m    echo "::error title=Failed to install CodSpeed CLI::Installation '
+            'failed."\x1b[0m\n'
+            "thread 'main' (2574) panicked at crates/ruff_benchmark/benches/ty_walltime.rs:238:13:\n"
+            "failed to execute the benchmark process, exit code: 101\n"
+        )
+        self.assertNotEqual(classify_ci_log(log)["failure_class"], "python_test_failure")
+
+    def test_an_echoed_lint_command_alone_is_not_a_lint_failure(self) -> None:
+        # vitejs/vite echoes its whole CI script, `pnpm run lint` included, in every job --
+        # including the jobs where lint passes and something else kills the run.
+        log = (
+            "^[[36;1mpnpm install^[[0m\n"
+            "^[[36;1mpnpm run lint^[[0m\n"
+            "##[error]Process completed with exit code 1.\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "unknown")
+
+    def test_a_tool_that_really_fails_still_wins_from_off_the_listing(self) -> None:
+        # The guard against overreach, on the very signal the ruff fix touched: pytest is named
+        # in the echoed script AND fails in the output. The script listing is discounted, the
+        # output is not, so a real pytest failure still wins at full confidence.
+        log = (
+            "^[[36;1m  pytest -q --color=yes^[[0m\n"
+            "FAILED tests/test_app.py::test_login - AssertionError: assert 401 == 200\n"
+            "===== 1 failed, 322 passed in 15.81s =====\n"
+            "##[error]Process completed with exit code 1.\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "python_test_failure")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+
+
+class ATieGoesToTheRuleThatWatchedSomethingFail(unittest.TestCase):
+    """Equal signal counts used to be settled by declaration order in `RULES`. A coin flip.
+
+    prometheus/prometheus -- a Go repo, whose Go tests failed -- lost that flip to
+    `javascript_lint` and was handed `pnpm lint` as the way to reproduce a Go test failure.
+    Three signals each, and `javascript_lint` happens to be declared first.
+
+    Witnessing is what separates them, and it was already computed: only one of
+    `javascript_lint`'s three ever saw a failure, while all three of `go_test_failure`'s did.
+    Scoring itself is unchanged -- an invocation beside a real error still counts, and still
+    keeps a genuine verdict's confidence up.
+    """
+
+    # Real lines from prometheus/prometheus CI run 29325808243: pnpm's listing of the web
+    # UI's installed packages, eslint's WARNINGS from a react-scripts build that exited 0,
+    # and, in the same job, the Go test that actually failed.
+    PROMETHEUS_LOG = (
+        "+ eslint 8.57.1\n"
+        "+ eslint-config-prettier 10.1.8\n"
+        "+ prettier 3.8.4\n"
+        "[eslint] \n"
+        "src/pages/graph/SeriesName.tsx\n"
+        "  Line 1:21:  'useContext' is defined but never used  @typescript-eslint/no-unused-vars\n"
+        "\n"
+        "Search for the keywords to learn more about each warning.\n"
+        "To ignore, add // eslint-disable-next-line to the line before.\n"
+        "go test   ./...\n"
+        "--- FAIL: TestPreprocessAndWrapWithStepInvariantExpr (0.00s)\n"
+        "FAIL\tgithub.com/prometheus/prometheus/promql\t12.403s\n"
+        "##[error]Process completed with exit code 2.\n"
+    )
+
+    def test_a_go_test_failure_outranks_lint_warnings_from_a_build_that_passed(self) -> None:
+        result = classify_ci_log(self.PROMETHEUS_LOG)
+        self.assertNotEqual(result["failure_class"], "javascript_lint")
+        self.assertEqual(result["failure_class"], "go_test_failure")
+
+    def test_the_reproduction_command_names_the_language_that_actually_failed(self) -> None:
+        # The damage the tie did, in the field: a Go maintainer told to run `pnpm lint`.
+        result = classify_ci_log(self.PROMETHEUS_LOG)
+        self.assertIn("go test", result["reproduction_command"])
+        self.assertNotIn("lint", result["reproduction_command"])
+
+    def test_a_real_lint_failure_still_wins_at_full_confidence(self) -> None:
+        # The guard against overreach: eslint that really ran and really failed witnesses off
+        # its own error line and its own summary, so it keeps the verdict and the confidence.
+        log = (
+            "$ eslint .\n"
+            "/home/runner/work/app/src/index.ts\n"
+            "  1:1  error  'foo' is defined but never used  no-unused-vars\n"
+            "\n"
+            "✖ 1 problem (1 error, 0 warnings)\n"
+            "ESLint found problems. lint failed\n"
+            "##[error]Process completed with exit code 1.\n"
+        )
+        result = classify_ci_log(log)
+        self.assertEqual(result["failure_class"], "javascript_lint")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+
+    def test_a_bare_tool_name_does_not_win_a_tie(self) -> None:
+        # The tiebreak's own guard. oven-sh/bun's formatter listed files it left `(unchanged)`,
+        # so `prettier` witnesses off `[prettier]` -- away from any echo or install line, yet
+        # evidence of nothing. It is a bare name in NON_FAILURE_PATTERNS, so it cannot carry
+        # the tie any more than it can carry a verdict, and the log stays `unknown`.
+        log = (
+            "[prettier] packages/bun-vscode/src/features/lockfile/index.ts 12ms (unchanged)\n"
+            "[prettier] test/cli/install/lockfile-only.test.ts 3ms (unchanged)\n"
+            "##[error]Process completed with exit code 1.\n"
+        )
+        self.assertEqual(classify_ci_log(log)["failure_class"], "unknown")
+
+    def test_a_rule_winning_on_signal_count_is_untouched_by_the_tiebreak(self) -> None:
+        # The fix's boundary, stated: only a TIE consults witnessing. A rule that wins on
+        # count outright still wins, whatever the witness counts are -- scoring is not
+        # reordered, so no genuine verdict moves.
+        log = (
+            "+ eslint 8.57.1\n"
+            "+ prettier 3.8.4\n"
+            "  Line 1:21:  'useContext' is defined but never used  @typescript-eslint/"
+            "no-unused-vars\n"
+            "[eslint] \n"
+            "biome check failed\n"
+            "lint failed\n"
+            "--- FAIL: TestThing (0.00s)\n"
+            "FAIL\tgithub.com/org/repo/pkg\t1.2s\n"
+        )
+        # javascript_lint: 5 matched; go_test_failure: 2 matched. No tie, so no tiebreak.
+        self.assertEqual(classify_ci_log(log)["failure_class"], "javascript_lint")
+
+
+if __name__ == "__main__":
+    unittest.main()

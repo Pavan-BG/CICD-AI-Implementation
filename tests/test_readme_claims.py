@@ -1,0 +1,106 @@
+"""The numbers the README advertises must be the numbers the code ships.
+
+Every count in the "Why maintainers use it" section is a claim a maintainer can
+check in one command. When a claim drifts from the code it reads as sloppiness
+at exactly the moment someone is deciding whether to trust the classifier.
+
+The fixture count was already pinned elsewhere in the suite and stayed honest.
+The class and redaction counts were pinned nowhere, and both drifted. So derive
+all three from the source of truth and fail in *both* directions: a stale README
+is a bug, and so is a README nobody updated after adding a rule.
+
+The same applies to the sample output in the jq cookbook: it is the page JSON
+consumers copy from, so a count or a schema version that has moved on is a
+script that breaks in their CI, not ours.
+"""
+
+from __future__ import annotations
+
+import re
+from contextlib import redirect_stdout
+from io import StringIO
+from pathlib import Path
+
+from patchrail.ci.classify import REDACTION_PATTERNS, RULES, list_failure_classes
+from patchrail.cli import main
+
+ROOT = Path(__file__).resolve().parents[1]
+README = (ROOT / "README.md").read_text(encoding="utf-8")
+JSON_COOKBOOK = (ROOT / "docs" / "json-cookbook.md").read_text(encoding="utf-8")
+
+FAILURE_CLASSES_RE = re.compile(r"\*\*(\d+) failure classes\*\*")
+FIXTURES_RE = re.compile(r"\*\*(\d+) sanitized CI log fixtures\*\*")
+REDACTION_RE = re.compile(r"\*\*(\d+) secret-redaction patterns\*\*")
+SUPPORT_TABLE_RE = re.compile(r"\|\s*(\d+) failure classes for GitHub Actions-style logs")
+QUICKSTART_OUTPUT_RE = re.compile(r"Real output:\n\n```markdown\n(.*?)\n```", re.DOTALL)
+QUICKSTART_LOG = ROOT / "examples" / "ci-triage" / "dependency-failure.log"
+COOKBOOK_COUNT_RE = re.compile(r'"count":\s*(\d+)')
+COOKBOOK_CLASSES_RE = re.compile(r'"classes":\s*(\d+)')
+
+
+def _claim(pattern: re.Pattern[str]) -> int:
+    match = pattern.search(README)
+    assert match is not None, f"README no longer states the claim matched by {pattern.pattern!r}"
+    return int(match.group(1))
+
+
+def _cookbook_claim(pattern: re.Pattern[str]) -> int:
+    match = pattern.search(JSON_COOKBOOK)
+    assert match is not None, (
+        f"docs/json-cookbook.md no longer shows the output matched by {pattern.pattern!r}"
+    )
+    return int(match.group(1))
+
+
+def test_readme_failure_class_count_matches_the_rule_table() -> None:
+    assert _claim(FAILURE_CLASSES_RE) == len(RULES)
+
+
+def test_readme_support_table_agrees_with_the_headline_claim() -> None:
+    # Two places in the README quote the class count; they drift independently.
+    assert _claim(SUPPORT_TABLE_RE) == len(RULES)
+
+
+def test_readme_fixture_count_matches_the_zoo_on_disk() -> None:
+    fixtures = list((ROOT / "examples" / "ci-triage").glob("*.log"))
+    assert _claim(FIXTURES_RE) == len(fixtures)
+
+
+def test_readme_redaction_pattern_count_matches_the_redaction_table() -> None:
+    assert _claim(REDACTION_RE) == len(REDACTION_PATTERNS)
+
+
+def test_json_cookbook_sample_output_matches_what_ci_classes_emits() -> None:
+    payload = list_failure_classes()
+    assert _cookbook_claim(COOKBOOK_COUNT_RE) == payload["count"] == len(RULES)
+    assert _cookbook_claim(COOKBOOK_CLASSES_RE) == len(payload["classes"])
+
+
+def test_json_cookbook_names_the_ci_classes_schema_version_actually_emitted() -> None:
+    # The page tells consumers which version to branch on. If it names a version
+    # the CLI no longer emits, following the page is what breaks them.
+    assert list_failure_classes()["schema_version"] in JSON_COOKBOOK
+
+
+def test_readme_quickstart_shows_the_output_the_cli_actually_prints() -> None:
+    # The README labels this block "Real output:" and it is the first thing a
+    # maintainer compares against their own terminal. It shipped without the
+    # `## Safety` section the renderer always emits, so the advertised output was
+    # not the real one. Derive it from the CLI instead of trusting a paste.
+    match = QUICKSTART_OUTPUT_RE.search(README)
+    assert match is not None, "README no longer shows a 'Real output:' markdown block"
+
+    stdout = StringIO()
+    with redirect_stdout(stdout):
+        exit_code = main(["ci", "explain", "--log", str(QUICKSTART_LOG), "--format", "markdown"])
+
+    assert exit_code == 0
+    assert match.group(1) == stdout.getvalue().strip()
+
+
+def test_unknown_is_not_advertised_as_a_supported_failure_class() -> None:
+    # `unknown` is what `ci explain` returns when nothing matched. Counting it as
+    # a class inflates the README's headline number by one and, worse, puts an
+    # unreachable entry in the denominator of the coverage check the README tells
+    # people to script (`ci classes --format json`).
+    assert "unknown" not in {rule["failure_class"] for rule in RULES}
