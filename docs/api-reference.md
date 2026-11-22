@@ -1,0 +1,593 @@
+# PatchRail API Reference
+
+PatchRail exposes a local HTTP API for the Agent Control Plane. It is intended
+for local dashboards, demos, and handoffs where a maintainer wants to inspect
+queue state without granting repository write permissions.
+
+The API is local-first:
+
+- it binds to `127.0.0.1` or `localhost`;
+- it stores state in a local SQLite database;
+- it does not require billing, network access, external models, or GitHub write
+  permission;
+- new work items and proposals start with `approval_state=pending`;
+- approval records a maintainer decision but does not execute a write action.
+
+## Start The Server
+
+```bash
+patchrail serve --host 127.0.0.1 --port 8765 --db .patchrail/queue.sqlite
+```
+
+The server rejects non-local hosts such as `0.0.0.0`:
+
+```bash
+patchrail serve --host 0.0.0.0
+# PatchRail queue API is local-only; use host 127.0.0.1 or localhost
+```
+
+## Response Envelope
+
+Every endpoint returns JSON with UTF-8 encoding. Safety metadata appears on
+health and status responses:
+
+```json
+{
+  "local_first": true,
+  "requirements": {
+    "billing_required": false,
+    "external_model_required": false,
+    "github_write_permission_required": false,
+    "network_required": false,
+    "write_actions_allowed_by_default": false
+  }
+}
+```
+
+Errors use an `error` field:
+
+```json
+{
+  "error": "unknown work item: prq_missing"
+}
+```
+
+## Public Schemas
+
+The queue records have versioned JSON Schema contracts. They are available from
+the CLI so local dashboards, tests, demos, and handoff tools can validate
+PatchRail output without importing private runtime code:
+
+```bash
+patchrail schema queue-status
+patchrail schema queue-work-item
+patchrail schema queue-proposal
+patchrail schema queue-audit-event
+patchrail schema queue-audit-summary
+patchrail schema queue-gate-report
+patchrail schema queue-policy-resolution
+patchrail schema queue-policy-scan
+patchrail schema queue-review
+```
+
+CI Janitor, benchmark, and consent-only pilot outputs are versioned too:
+
+```bash
+patchrail schema ci-result
+patchrail schema ci-benchmark
+patchrail schema ci-classes
+patchrail schema ci-fixture-check
+patchrail schema ci-pilot-summary
+patchrail schema ci-pilot-metrics
+patchrail schema application-dossier
+patchrail schema reviewer-quick-check-artifacts
+```
+
+The same schema files are mirrored in `src/patchrail/schemas/` for package
+consumers:
+
+- `src/patchrail/schemas/ci-result.v1.schema.json`
+- `src/patchrail/schemas/ci-benchmark.v1.schema.json`
+- `src/patchrail/schemas/ci-classes.v2.schema.json`
+- `src/patchrail/schemas/ci-fixture-check.v1.schema.json`
+- `src/patchrail/schemas/ci-pilot-summary.v1.schema.json`
+- `src/patchrail/schemas/ci-pilot-metrics.v1.schema.json`
+- `src/patchrail/schemas/application-dossier.v1.schema.json`
+- `src/patchrail/schemas/reviewer-quick-check-artifacts.v1.schema.json`
+- `src/patchrail/schemas/queue-work-item.v1.schema.json`
+- `src/patchrail/schemas/queue-proposal.v1.schema.json`
+- `src/patchrail/schemas/queue-audit-event.v1.schema.json`
+- `src/patchrail/schemas/queue-audit-summary.v1.schema.json`
+- `src/patchrail/schemas/queue-gate-report.v1.schema.json`
+- `src/patchrail/schemas/queue-policy-resolution.v1.schema.json`
+- `src/patchrail/schemas/queue-policy-scan.v1.schema.json`
+- `src/patchrail/schemas/queue-review.v1.schema.json`
+- `src/patchrail/schemas/queue-status.v1.schema.json`
+
+Queue schema mirrors also remain available at the repository root for consumers
+that read schemas without installing the package:
+
+- `schemas/queue_work_item.schema.json`
+- `schemas/queue_proposal.schema.json`
+- `schemas/queue_audit_event.schema.json`
+- `schemas/queue_audit_summary.schema.json`
+- `schemas/queue_gate_report.schema.json`
+- `schemas/queue_policy_resolution.schema.json`
+- `schemas/queue_policy_scan.schema.json`
+- `schemas/queue_review.schema.json`
+- `schemas/queue_status.schema.json`
+- `schemas/application_dossier.schema.json`
+- `schemas/reviewer_quick_check_artifacts.schema.json`
+
+The schemas preserve the human-approval boundary: work items require
+`write_actions_allowed=false`, proposals are local patch-plan records, and audit
+events are local append-only records of queue operations. The CI schemas
+preserve the local-first boundary for benchmark and pilot artifacts: no billing,
+external model, network access, GitHub write permission, raw-log copying, or
+unapproved external adopter counting is required by those outputs.
+The application dossier schema preserves the external-program boundary:
+`agent_may_submit=false`, maintainer tap is required, placeholder metrics are
+forbidden, and third-party write actions remain disabled.
+The reviewer quick-check artifact schema preserves the same local reviewer
+boundary for
+`patchrail evidence reviewer-packet --out-dir patchrail-reviewer-packet`:
+generated packets declare no network, write action, public publish, or
+application submission, include the Agent Control Plane reviewer handoff audit
+as `control-plane-evidence.md/json`, include `README.md` as the review order,
+include `artifact-index.md` as a reviewer-facing file map with byte sizes and
+SHA-256 digests for each review artifact, include release-readiness
+build/twine/wheel-smoke evidence as
+`release-readiness.md/json` with PyPI publish and release tagging still behind
+manual gates, include ephemeral loopback HTTP API smoke evidence as
+`http-api-evidence.md/json`, and include their own manifest schema for offline
+validation. The manifest also includes `artifact_details` with each artifact's
+path, byte size, and SHA-256 digest so reviewers can perform offline integrity
+checks after downloading a CI artifact.
+Reviewers can verify those details locally:
+
+```bash
+patchrail evidence verify-reviewer-packet patchrail-reviewer-packet --format markdown
+```
+
+The verifier recomputes every listed artifact's byte size and SHA-256 digest,
+checks that `artifacts` and `artifact_details` cover the same files, rejects
+symlinked or non-file artifacts, rejects extra files, and exits non-zero if the
+packet has drifted.
+Contract phrase: no network, write action, public publish,
+or application submission. Short contract: no network, write action, public publish, or application submission.
+The compatibility script
+`scripts/reviewer_quick_check.py --out-dir` calls the same packaged
+implementation.
+
+## CLI Audit Summary
+
+`patchrail queue audit-summary` summarizes the append-only local audit events
+and verifies whether required human-gate events are present. It reads the local
+SQLite queue and emits `patchrail.queue_audit_summary.v1`; it does not append a
+new event or execute any queued proposal.
+
+```bash
+patchrail queue --db patchrail-pilot.sqlite audit-summary --format markdown
+```
+
+By default the command expects the complete local Agent Control Plane demo gate
+sequence: work item add, proposal add, proposal approve, proposal reject, work
+item approve, work item reject, and queue export. Custom release checks can
+provide repeated `--require-event` flags when they need a smaller contract.
+
+The command exits with success only when the required events are present. A
+failed audit summary is still local evidence: it reports the missing event
+types without contacting GitHub, calling external models, opening pull requests,
+posting comments, or requiring billing.
+
+## CLI Queue Gate Report
+
+`patchrail queue gate-report` emits a short reviewer-facing readiness report
+without exporting full work item, proposal, or audit records:
+
+```bash
+patchrail queue --db patchrail-pilot.sqlite gate-report --format markdown
+```
+
+The report emits `patchrail.queue_gate_report.v1`, combines queue status with
+audit-summary gate coverage, and reports pending decisions, missing required
+events, decision counts, reviewer next actions, and safety flags. It exits
+successfully only when no reviewer decisions remain pending and all required
+local gate events are present. It is read-only, records no audit event, permits
+no execution, redacts local paths, and does not contact GitHub, call external
+models, open pull requests, post comments, or require billing.
+
+## CLI Queue Policy Scan
+
+`patchrail queue policy-scan` emits a read-only pre-handoff policy scan:
+
+```bash
+patchrail queue --db patchrail-pilot.sqlite policy-scan --format markdown
+```
+
+The scan emits `patchrail.queue_policy_scan.v1` and fails closed when active
+work items or proposals contain blocked automation signals: automatic pull
+requests, automatic issue comments, outbound contact, payout/claim language,
+KYC/payment gates, or other external write actions. It reports matching record
+IDs, matched categories, matched terms, and recommended reviewer actions.
+
+The scan does not mutate the queue, append an audit event, execute proposals,
+open pull requests, post comments, contact repositories, call external models,
+require billing, or ask for GitHub write permission. Use `patchrail queue reject`
+or `patchrail queue skip` to keep blocked records visible while preventing
+handoff.
+
+## CLI Queue Policy Resolution
+
+`patchrail queue policy-resolve` is the explicit local mutating counterpart to
+`policy-scan`:
+
+```bash
+patchrail queue --db patchrail-pilot.sqlite policy-resolve --format markdown
+```
+
+The command emits `patchrail.queue_policy_resolution.v1`, uses `policy-scan` to
+find active blocked records, marks matching work items as skipped, rejects
+matching proposal records, records normal local audit events, and then runs the
+scan again to report the remaining blocked-record count. The default decision
+note is `revenue-safety policy: local-only human approval required`; maintainers can override it with
+`--reason` for a narrower local policy decision.
+
+The resolution is local-only. It does not delete work items, execute proposals,
+open pull requests, post comments, contact repositories, call external models,
+perform network access, require billing, or ask for GitHub write permission.
+
+## CLI Queue Review Inbox
+
+`patchrail queue review` emits a compact local human-review inbox:
+
+```bash
+patchrail queue --db patchrail-pilot.sqlite review --format markdown
+```
+
+The review inbox emits `patchrail.queue_review.v1`, groups pending, approved,
+and rejected work items and proposals, and reports reviewer next actions with
+the same local-first safety boundary as the rest of the Agent Control Plane. It
+does not export full payloads, patch plans, or audit history; work item entries
+include compact metadata plus payload key names so maintainers can decide what
+to inspect next. The JSON also includes `handoff_checklist`: pending queues list
+the local approve/reject/skip commands reviewers can run next, while clear
+queues list the final `policy-scan`, `gate-report`, and `bundle` commands for a
+read-only handoff packet. It exits non-zero while pending work items or
+proposals remain, redacts absolute local paths, records no audit event, permits
+no execution, and does not contact GitHub, call external models, open pull
+requests, post comments, or require billing.
+
+## CLI Queue Skip
+
+`patchrail queue skip` records that a work item should stay in history but must
+not be processed:
+
+```bash
+patchrail queue --db patchrail-pilot.sqlite skip prq_example \
+  --reason "Retired by current maintainer policy."
+```
+
+The command updates the item to `status=skipped`,
+`approval_state=rejected`, stores the reason in `decision_note`, and appends a
+`work_item_skipped` audit event. It does not delete rows, execute proposals,
+open pull requests, post comments, contact repositories, call external models,
+require billing, or ask for GitHub write permission.
+
+## CLI Queue Bundle
+
+`patchrail queue bundle` emits a read-only handoff packet from the same local
+SQLite database:
+
+```bash
+patchrail queue --db patchrail-pilot.sqlite bundle --format markdown
+```
+
+The bundle includes queue status, audit-summary gate coverage, work items,
+proposals, audit events, a reviewer summary, safety requirements, and remaining
+gate gaps. It emits `patchrail.queue_bundle.v1` JSON by default, exits
+successfully only when the required gate events are present, redacts absolute
+local paths in the emitted payload, and does not append a new audit event while
+reading the queue. The reviewer summary gives a maintainer a quick checklist:
+handoff readiness, human-gate completion, pending decisions, proposal/work-item
+decision counts, and the sections to inspect before acting on the local
+evidence.
+
+Like the other queue commands, the bundle does not execute proposals, open pull
+requests, post comments, contact repositories, call external models, require
+billing, or ask for GitHub write permission.
+
+## Local Evidence Audit
+
+PatchRail also exposes a local evidence command for the Agent Control Plane
+demo:
+
+```bash
+patchrail evidence control-plane-demo --out-dir .patchrail-demo --force --format markdown
+patchrail evidence control-plane --format markdown
+patchrail evidence http-api --format markdown
+```
+
+`patchrail evidence control-plane-demo` runs the checked-in local queue demo
+from a source checkout, writes reviewer artifacts under the selected output
+directory, and validates the resulting `summary.json` with the same evidence
+contract before reporting `local_demo_ready`. It fails closed if the demo cannot
+exercise local approval, risky-proposal rejection, audit-summary, gate-report,
+or bundle contracts.
+
+`patchrail evidence control-plane` validates
+`examples/local-agent-queue/demo-summary.expected.json` by default, confirms the
+required audit events and artifacts are present, and reports whether the human
+approval, proposal approval, and risky-proposal rejection gates were exercised.
+It also verifies that the gate report and bundle reviewer summary are ready for
+handoff, leaves no pending decisions, and does not allow execution. It is a
+local release guardrail: it does not bind a server, contact GitHub, call
+external models, require billing, or grant repository write permission.
+
+`patchrail evidence http-api` complements that artifact check by starting an
+ephemeral server bound to `127.0.0.1`, creating local work items and proposals,
+recording approval and rejection decisions, reading `/status`, and exporting
+`/audit-events`. The command reports `local_http_api_ready` only when the
+required endpoints, human-gate events, and local-first safety flags are present.
+It also reports the `/status` human gate summary so maintainers can verify that
+all local approval decisions were exercised and write actions remain locked. It
+stores data in a temporary SQLite database and does not print the local
+filesystem path.
+
+## Health And Status
+
+### `GET /health`
+
+Returns server readiness and the local-first requirements.
+
+```bash
+curl -sS http://127.0.0.1:8765/health
+```
+
+### `GET /status`
+
+Returns the same `patchrail.queue_status.v1` contract emitted by
+`patchrail queue status --format json`: queue counts, approval-state counts,
+pending human decisions, audit-event counts, the latest local audit event,
+database path, and the safety boundary. The endpoint also keeps the small
+legacy `queue` and `requirements` objects for local dashboards that already
+consumed `/status`.
+
+```bash
+curl -sS http://127.0.0.1:8765/status
+```
+
+## Work Items
+
+### `GET /work-items`
+
+Lists work items. Optional filters:
+
+- `status`
+- `approval_state`
+
+```bash
+curl -sS 'http://127.0.0.1:8765/work-items?approval_state=pending'
+```
+
+### `POST /work-items`
+
+Creates a pending local work item.
+
+Required fields:
+
+- `kind`
+- `title`
+
+Optional fields:
+
+- `source`
+- `payload`
+
+```bash
+curl -sS -X POST http://127.0.0.1:8765/work-items \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "kind": "ci_failure",
+    "title": "Review failed dependency install",
+    "source": "local-demo",
+    "payload": {
+      "report": "patchrail-ci-result.json"
+    }
+  }'
+```
+
+Created items always include `write_actions_allowed=false` unless a future
+maintainer-reviewed execution layer explicitly changes that policy.
+
+## CLI Queue Imports
+
+The HTTP API creates generic work items. The CLI also exposes import helpers
+that turn local CI artifacts into the same queue schema without granting
+repository write permissions.
+
+### `patchrail queue add --from-ci-result`
+
+Imports a local `patchrail-result.json` produced by `patchrail ci classify` and
+creates a pending `ci_failure` work item.
+
+```bash
+patchrail queue --db patchrail-pilot.sqlite add \
+  --from-ci-result patchrail-result.json
+```
+
+The imported payload includes:
+
+- `failure_class`
+- `ci_result.schema_version`
+- `ci_result.requirements`
+- local report or result references supplied by the caller
+
+### `patchrail queue add --from-pilot-pack`
+
+Imports a consent-only pilot pack created by `patchrail ci pilot-pack`. The
+argument may be either the pack directory or its `pilot-manifest.json` file.
+
+```bash
+patchrail queue --db patchrail-pilot.sqlite add \
+  --from-pilot-pack patchrail-pilot-pack
+```
+
+Importer contract:
+
+- requires `schema_version=patchrail.ci_pilot_pack.v1`;
+- rejects manifests where `source.raw_log_copied` is not `false`;
+- loads `patchrail-result.json` from the local pack;
+- stores references to `failed-ci.redacted.log`, `patchrail-report.md`,
+  `patchrail-result.json`, `pilot-manifest.json`, and `README.md`;
+- creates a pending `ci_failure` work item;
+- keeps `write_actions_allowed=false`.
+
+The importer does not read or store the original raw CI log, does not call
+external models, does not contact GitHub, and does not create pull requests,
+comments, branches, funded issue actions, or billing events.
+
+## CLI Pilot Metrics
+
+### `patchrail ci pilot-metrics`
+
+Aggregates one or more `patchrail ci pilot-summary --format json` outputs into
+safe adoption metrics for local records or public evidence docs.
+
+```bash
+patchrail ci pilot-metrics pilot-summary-*.json --format markdown
+```
+
+Metric contract:
+
+- counts total pilot summaries;
+- counts public repository mentions only when each summary has
+  `repository_mention_approved=true`;
+- keeps private or unapproved repository names out of the public list;
+- counts maintainer-reviewed `classification_correct` and
+  `maintainer_action_useful` outcomes;
+- verifies each input used `schema_version=patchrail.ci_pilot_summary.v1`;
+- requires no network, external model, billing, or GitHub write permission.
+
+### `GET /work-items/<id>`
+
+Fetches one work item.
+
+```bash
+curl -sS http://127.0.0.1:8765/work-items/prq_example
+```
+
+### `POST /work-items/<id>/approve`
+
+Records maintainer approval for a local work item.
+
+```bash
+curl -sS -X POST http://127.0.0.1:8765/work-items/prq_example/approve \
+  -H 'Content-Type: application/json' \
+  -d '{"note":"Reviewed local evidence."}'
+```
+
+Approval does not open a pull request, post a comment, push commits, contact a
+third party, or claim funding.
+
+### `POST /work-items/<id>/reject`
+
+Records maintainer rejection.
+
+```bash
+curl -sS -X POST http://127.0.0.1:8765/work-items/prq_example/reject \
+  -H 'Content-Type: application/json' \
+  -d '{"note":"Needs a smaller reproduction."}'
+```
+
+## Proposals
+
+Proposal records attach a reviewable patch plan to a work item. They are local
+handoff records, not execution requests.
+
+### `GET /proposals`
+
+Lists proposals. Optional filters:
+
+- `work_item_id`
+- `approval_state`
+
+```bash
+curl -sS 'http://127.0.0.1:8765/proposals?approval_state=pending'
+```
+
+### `POST /proposals`
+
+Creates a pending proposal.
+
+Required fields:
+
+- `work_item_id`
+- `title`
+- `summary`
+- `patch_plan`
+
+Optional field:
+
+- `risk_level`
+
+```bash
+curl -sS -X POST http://127.0.0.1:8765/proposals \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "work_item_id": "prq_example",
+    "title": "Pin compatible dependency range",
+    "summary": "Adjust dependency constraints and re-run CI.",
+    "patch_plan": "1. Reproduce the failure.\n2. Update dependency bounds.\n3. Re-run CI.",
+    "risk_level": "low"
+  }'
+```
+
+### `GET /proposals/<id>`
+
+Fetches one proposal.
+
+```bash
+curl -sS http://127.0.0.1:8765/proposals/prp_example
+```
+
+### `POST /proposals/<id>/approve`
+
+Records maintainer approval for a local patch plan.
+
+```bash
+curl -sS -X POST http://127.0.0.1:8765/proposals/prp_example/approve \
+  -H 'Content-Type: application/json' \
+  -d '{"note":"Plan accepted for manual handoff."}'
+```
+
+### `POST /proposals/<id>/reject`
+
+Records maintainer rejection for a local patch plan.
+
+```bash
+curl -sS -X POST http://127.0.0.1:8765/proposals/prp_example/reject \
+  -H 'Content-Type: application/json' \
+  -d '{"note":"Risk is too high for this release."}'
+```
+
+## Audit Events
+
+### `GET /audit-events`
+
+Exports local audit events for queue creation, proposals, decisions, and
+handoffs. Optional filter:
+
+- `work_item_id`
+
+```bash
+curl -sS http://127.0.0.1:8765/audit-events
+curl -sS 'http://127.0.0.1:8765/audit-events?work_item_id=prq_example'
+```
+
+## Compatibility
+
+The current API schema is `patchrail.queue_api.v1`, backed by
+`patchrail.queue.v1` SQLite records. v0.x releases may add fields, but should
+not remove the local-first requirements, pending-by-default work items, or
+human approval boundary.
