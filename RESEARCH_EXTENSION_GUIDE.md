@@ -1,4 +1,4 @@
-# S495 CI/CD diagnostic research extension
+# CI/CD diagnostic research extension
 
 This is the **original PatchRail 0.7.6 project plus additive research code**, not a replacement. All original source files, public sample logs, fixtures, tests, documentation and Apache-2.0 licence are preserved.
 
